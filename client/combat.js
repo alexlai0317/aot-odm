@@ -92,7 +92,7 @@ function findBodyTarget(player, titanManager) {
     if (dist < bestDist) {
       bestDist = dist;
       // 砍在肩膀高度附近算手臂，砍得到手臂才有機會打出硬直
-      const shoulderY = titan.height * 0.6;
+      const shoulderY = titan.height * 0.76;
       const limb = Math.abs(player.position.y - shoulderY) < titan.height * 0.25
         ? (dx * Math.cos(titan.yaw) > 0 ? 'ra' : 'la')
         : null;

@@ -32,7 +32,6 @@ export const JUMP_SPEED = 8;
 // ── 立體機動裝置（ODM）────────────────────────────────────
 export const HOOK_RANGE = 135;
 export const HOOK_TRAVEL_SPEED = 340; // 鉤爪飛出去的速度，純視覺（射中判定在發射當下就算好）
-export const HOOK_SPREAD_DEG = 6.5; // 左右鉤相對準心的角度偏移，製造雙錨點的張力
 export const HOOK_PULL_ACCEL = 54; // 沿繩索方向的拉力加速度（要明顯大於重力才爬得上去）
 // 拉力會隨速度遞減，到這個速度就完全不再加速。
 // 用遞減而不是硬性上限：起步時照樣有力，但不會盪一盪就飆到失控
@@ -69,12 +68,14 @@ export const BLADE_BASE_DAMAGE = 12;
 export const BLADE_SPEED_DAMAGE = 3.4; // 每 1 m/s 換算的傷害
 
 // ── 巨人 ─────────────────────────────────────────────────
-// height 是身高（公尺），napeHp 是後頸弱點的耐久，speed 是行走速度
+// height 是身高（公尺），napeHp 是後頸弱點的耐久，speed 是行走速度。
+// 身高刻意壓在城牆高度（52m）與最高建築（約 48m）之下，
+// 不然大型巨人會直接高過天際線，反而看不出「大」。
 export const TITAN_TYPES = {
-  small: { label: '小型', height: 5, napeHp: 55, speed: 9.5, damage: 18, color: 0xd9a689 },
-  normal: { label: '一般', height: 12, napeHp: 100, speed: 6.5, damage: 28, color: 0xcf9c7d },
-  large: { label: '大型', height: 19, napeHp: 165, speed: 5, damage: 42, color: 0xc08e6f },
-  abnormal: { label: '奇行種', height: 13, napeHp: 120, speed: 13, damage: 34, color: 0xb87f6a },
+  small: { label: '小型', height: 7, napeHp: 55, speed: 9.5, damage: 18, color: 0xd9a689 },
+  normal: { label: '一般', height: 16, napeHp: 100, speed: 6.5, damage: 28, color: 0xcf9c7d },
+  large: { label: '大型', height: 25, napeHp: 165, speed: 5, damage: 42, color: 0xc08e6f },
+  abnormal: { label: '奇行種', height: 17, napeHp: 120, speed: 13, damage: 34, color: 0xb87f6a },
 };
 
 export const TITAN_ATTACK_COOLDOWN = 1.6;

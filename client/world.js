@@ -182,9 +182,14 @@ function addBuilding(scene, hookables, buildings, x, z, w, d, height, rand, forc
   scene.add(body);
   hookables.push(body);
 
-  // 屋頂做成薄薄一片深色板子，飛在空中時比較看得出哪裡可以站
+  // 屋頂做成薄薄一片深色板子、比本體大一圈，飛在空中時比較看得出哪裡可以站。
+  // 碰撞的可站立範圍必須跟這片視覺屋頂完全對齊——曾經只用本體的 w×d 判斷落地，
+  // 屋頂視覺上凸出去的那一圈看起來像實地，踩上去卻直接落空，邊界感覺很模糊。
+  const overhang = 1.2;
+  const roofW = w + overhang;
+  const roofD = d + overhang;
   const roof = new THREE.Mesh(
-    new THREE.BoxGeometry(w + 1.2, 0.8, d + 1.2),
+    new THREE.BoxGeometry(roofW, 0.8, roofD),
     new THREE.MeshLambertMaterial({ color: ROOF_COLORS[Math.floor(rand() * ROOF_COLORS.length)] })
   );
   roof.position.set(x, height + 0.4, z);
@@ -192,10 +197,10 @@ function addBuilding(scene, hookables, buildings, x, z, w, d, height, rand, forc
   hookables.push(roof);
 
   buildings.push({
-    minX: x - w / 2,
-    maxX: x + w / 2,
-    minZ: z - d / 2,
-    maxZ: z + d / 2,
+    minX: x - roofW / 2,
+    maxX: x + roofW / 2,
+    minZ: z - roofD / 2,
+    maxZ: z + roofD / 2,
     height: height + 0.8, // 含屋頂板的厚度，站上去才不會腳陷進去
   });
 }

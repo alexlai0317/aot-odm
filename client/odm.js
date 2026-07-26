@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import {
   HOOK_RANGE,
   HOOK_TRAVEL_SPEED,
-  HOOK_SPREAD_DEG,
   HOOK_PULL_ACCEL,
   HOOK_PULL_FALLOFF,
   HOOK_REEL_RATE,
@@ -85,14 +84,17 @@ export class OdmGear {
     const hook = this.hooks[index];
     this.detach(index);
 
+    // 瞄準方向就是準心正中央：曾經讓左右鉤各偏 6.5 度製造雙錨點的張開感，
+    // 但巨人的身體遠比建築物窄，距離一拉開，那個偏移角度換算成的側向誤差
+    // 就足以讓鉤爪直接飛過巨人兩側完全打空。視覺上的雙錨點張力改由發射
+    // 位置的左右手偏移（handPosition）提供，瞄準本身必須跟準心完全一致。
     this.camera.getWorldDirection(_dir);
-    // 左右鉤各自往外偏一點角度，兩條繩子張開才有雙錨點的穩定感
-    const spread = THREE.MathUtils.degToRad(HOOK_SPREAD_DEG) * hook.side;
-    _dir.applyAxisAngle(this.camera.up, -spread).normalize();
 
     _raycaster.set(this.handPosition(hook.side, playerPos, _v1), _dir);
     const hits = _raycaster.intersectObjects(targets, false);
-    const hit = hits.find((h) => h.distance > 2);
+    // 過濾掉貼身距離的命中（例如往下看時打到自己腳邊的地面），
+    // 但門檻壓低，才不會讓近戰後想立刻鉤住同一隻巨人重新拉開距離的動作失敗
+    const hit = hits.find((h) => h.distance > 1.2);
     if (!hit) return false;
 
     hook.state = 'flying';

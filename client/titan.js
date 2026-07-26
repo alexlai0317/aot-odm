@@ -45,12 +45,14 @@ export class Titan {
     this.buildBody();
   }
 
+  // 比例刻意不照真人：軀幹加寬加厚、頭放大、手臂拉長到過膝，
+  // 這是「巨人」跟「放大的人」之間唯一的視覺差異，光靠等比放大看起來只會像巨大的人偶。
   buildBody() {
     const h = this.height;
     const skin = new THREE.MeshLambertMaterial({ color: this.type.color });
 
     const torso = this.addPart(
-      new THREE.BoxGeometry(h * 0.42, h * 0.42, h * 0.24),
+      new THREE.BoxGeometry(h * 0.5, h * 0.46, h * 0.32),
       skin,
       0,
       h * 0.58,
@@ -58,48 +60,81 @@ export class Titan {
     );
     this.group.add(torso);
 
-    const hip = this.addPart(new THREE.BoxGeometry(h * 0.34, h * 0.14, h * 0.22), skin, 0, h * 0.4, 0);
+    const hip = this.addPart(new THREE.BoxGeometry(h * 0.4, h * 0.16, h * 0.28), skin, 0, h * 0.38, 0);
     this.group.add(hip);
 
-    const head = this.addPart(new THREE.BoxGeometry(h * 0.2, h * 0.2, h * 0.2), skin, 0, h * 0.89, 0);
+    // 頭放大到接近軀幹寬度的一半，幾乎沒有脖子——這是最快讀出「不是人類」的一眼特徵
+    const head = this.addPart(new THREE.BoxGeometry(h * 0.27, h * 0.27, h * 0.27), skin, 0, h * 0.9, 0);
     this.group.add(head);
     this.head = head;
+
+    // 血盆大口：一條橫貫下顎的深色縫，遠處也能一眼認出「這是巨人不是人」
+    const mouth = new THREE.Mesh(
+      new THREE.BoxGeometry(h * 0.22, h * 0.025, h * 0.03),
+      new THREE.MeshBasicMaterial({ color: 0x2a1a12 })
+    );
+    mouth.position.set(0, h * 0.845, h * 0.135 + 0.01);
+    this.group.add(mouth);
 
     // 眼睛：讓玩家在混戰中一眼看出巨人面朝哪邊（也就是弱點在反方向）
     const eyeMat = new THREE.MeshBasicMaterial({ color: 0x2a1a12 });
     for (const sx of [-1, 1]) {
-      const eye = new THREE.Mesh(new THREE.BoxGeometry(h * 0.045, h * 0.03, h * 0.02), eyeMat);
-      eye.position.set(sx * h * 0.05, h * 0.91, h * 0.101);
+      const eye = new THREE.Mesh(new THREE.BoxGeometry(h * 0.05, h * 0.035, h * 0.02), eyeMat);
+      eye.position.set(sx * h * 0.065, h * 0.92, h * 0.135);
       this.group.add(eye);
     }
 
     // 後頸弱點：頭與軀幹之間、身體背面。顏色刻意突兀，遠遠就看得到
     this.nape = new THREE.Mesh(
-      new THREE.BoxGeometry(h * 0.24, h * 0.2, h * 0.07),
+      new THREE.BoxGeometry(h * 0.28, h * 0.22, h * 0.08),
       new THREE.MeshBasicMaterial({ color: 0xd8443a })
     );
-    this.nape.position.set(0, h * 0.76, -h * 0.14);
+    this.nape.position.set(0, h * 0.83, -h * 0.16);
     this.nape.userData.titanId = this.id;
     this.group.add(this.nape);
     this.parts.push(this.nape);
 
+    // 手臂刻意拉到過膝的長度——不合人體比例，正是「巨人」而非「巨大的人」的關鍵
+    const armLength = h * 0.5;
     this.arms = {};
     for (const [key, sx] of [['la', -1], ['ra', 1]]) {
       const pivot = new THREE.Group();
-      pivot.position.set(sx * h * 0.26, h * 0.74, 0);
-      const arm = this.addPart(new THREE.BoxGeometry(h * 0.1, h * 0.38, h * 0.1), skin, 0, -h * 0.19, 0);
+      pivot.position.set(sx * h * 0.31, h * 0.76, 0);
+      const arm = this.addPart(
+        new THREE.BoxGeometry(h * 0.135, armLength, h * 0.135),
+        skin,
+        0,
+        -armLength / 2,
+        0
+      );
       arm.userData.limb = key;
       pivot.add(arm);
+
+      const fist = this.addPart(new THREE.BoxGeometry(h * 0.16, h * 0.16, h * 0.16), skin, 0, -armLength - h * 0.03, 0);
+      fist.userData.limb = key;
+      pivot.add(fist);
+
       this.group.add(pivot);
       this.arms[key] = { pivot, mesh: arm };
     }
 
+    const legLength = h * 0.42;
     this.legs = {};
     for (const [key, sx] of [['ll', -1], ['rl', 1]]) {
       const pivot = new THREE.Group();
-      pivot.position.set(sx * h * 0.11, h * 0.38, 0);
-      const leg = this.addPart(new THREE.BoxGeometry(h * 0.13, h * 0.38, h * 0.13), skin, 0, -h * 0.19, 0);
+      pivot.position.set(sx * h * 0.13, h * 0.38, 0);
+      const leg = this.addPart(
+        new THREE.BoxGeometry(h * 0.17, legLength, h * 0.17),
+        skin,
+        0,
+        -legLength / 2,
+        0
+      );
       pivot.add(leg);
+
+      const foot = this.addPart(new THREE.BoxGeometry(h * 0.2, h * 0.08, h * 0.28), skin, 0, -legLength - h * 0.02, h * 0.04);
+      pivot.add(foot);
+
       this.group.add(pivot);
       this.legs[key] = { pivot, mesh: leg };
     }
