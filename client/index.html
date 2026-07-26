@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>調查兵團 — 立體機動訓練</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- 準心 -->
+  <div id="crosshair">
+    <span class="ch ch-t"></span>
+    <span class="ch ch-b"></span>
+    <span class="ch ch-l"></span>
+    <span class="ch ch-r"></span>
+    <span class="ch-dot"></span>
+  </div>
+
+  <!-- 受傷時的紅色邊框 -->
+  <div id="vignette"></div>
+
+  <div id="hud" class="hidden">
+    <div id="hud-left">
+      <div class="gauge">
+        <div class="gauge-label">體力 <span id="hp-value">100</span></div>
+        <div class="bar"><div id="hp-bar" class="bar-fill hp"></div></div>
+      </div>
+      <div class="gauge">
+        <div class="gauge-label">瓦斯 <span id="gas-value">100</span></div>
+        <div class="bar"><div id="gas-bar" class="bar-fill gas"></div></div>
+      </div>
+      <div class="gauge">
+        <div class="gauge-label">刀刃 <span id="blade-spare">備用 ×5</span></div>
+        <div class="bar"><div id="blade-bar" class="bar-fill blade"></div></div>
+      </div>
+    </div>
+
+    <div id="hud-right">
+      <div id="speed">
+        <span id="speed-value">0</span><span class="unit">km/h</span>
+      </div>
+      <div id="score-row">分數 <span id="score-value">0</span></div>
+      <div id="kill-row">討伐 <span id="kill-value">0</span></div>
+    </div>
+
+    <div id="hud-top">
+      <div id="wave-label">第 1 波</div>
+      <div id="wave-remaining">剩餘巨人 0</div>
+    </div>
+
+    <div id="toast"></div>
+    <div id="feed"></div>
+  </div>
+
+  <!-- 開場說明 -->
+  <div id="overlay" class="overlay">
+    <div class="panel">
+      <h1>立體機動訓練</h1>
+      <p class="sub">進擊的巨人風格 · 單人討伐</p>
+
+      <div class="controls">
+        <div class="ctrl"><kbd>滑鼠左鍵</kbd><span>發射左鉤索（按住維持）</span></div>
+        <div class="ctrl"><kbd>滑鼠右鍵</kbd><span>發射右鉤索（按住維持）</span></div>
+        <div class="ctrl"><kbd>空白鍵</kbd><span>瓦斯噴射 / 收繩加速 / 地面起跳</span></div>
+        <div class="ctrl"><kbd>Ctrl 或 C</kbd><span>煞車減速（降落屋頂靠這個）</span></div>
+        <div class="ctrl"><kbd>Shift</kbd><span>揮刀</span></div>
+        <div class="ctrl"><kbd>R</kbd><span>更換刀刃</span></div>
+        <div class="ctrl"><kbd>W A S D</kbd><span>移動與空中微調</span></div>
+        <div class="ctrl"><kbd>Esc</kbd><span>暫停</span></div>
+      </div>
+
+      <div class="brief">
+        <p><b>怎麼殺巨人：</b>傷害完全取決於揮刀當下的<b>移動速度</b>。站著砍只會彈開，
+        要先用鉤索把速度拉到 <b>30 km/h</b> 以上，繞到巨人<b>背後</b>，切中後頸那塊紅色弱點。</p>
+        <p><b>訣竅：</b>鉤索要<b>往高處瞄</b>（屋頂、塔頂），掛在腳邊的牆只會把你拖著跑。
+        左右鍵交替換錨點就能一直維持速度，砍不到弱點時先削手臂可以打出硬直。</p>
+        <p><b>要降落就按 Ctrl。</b>煞車會放掉捲揚機的拉力並快速減速，
+        鬆開鉤索直接飄是停不下來的。</p>
+        <p><b>準心會告訴你時機：</b>弱點進入攻擊範圍時準心會張開，
+        <b style="color:#6de08a">綠色</b>代表速度夠、砍下去有傷害，
+        <b style="color:#e0796f">紅色</b>代表太慢會被彈開。</p>
+      </div>
+
+      <button id="start-btn">開始討伐</button>
+      <p class="hint">點擊後會鎖定滑鼠，按 Esc 解除</p>
+    </div>
+  </div>
+
+  <!-- 暫停 -->
+  <div id="pause" class="overlay hidden">
+    <div class="panel small">
+      <h2>暫停</h2>
+      <p class="sub">點擊畫面任一處繼續</p>
+    </div>
+  </div>
+
+  <!-- 陣亡 -->
+  <div id="gameover" class="overlay hidden">
+    <div class="panel small">
+      <h2>作戰失敗</h2>
+      <p class="sub" id="go-summary"></p>
+      <button id="restart-btn">重新出擊</button>
+    </div>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

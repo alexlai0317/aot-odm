@@ -1,0 +1,21 @@
+{
+  "name": "aot-odm",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "進擊的巨人風格的第一人稱立體機動裝置獵巨人遊戲（Three.js 單人）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "vite": "^5.1.0"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true
+  }
+}
