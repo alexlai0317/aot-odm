@@ -69,13 +69,19 @@ export const BLADE_SPEED_DAMAGE = 3.4; // 每 1 m/s 換算的傷害
 
 // ── 巨人 ─────────────────────────────────────────────────
 // height 是身高（公尺），napeHp 是後頸弱點的耐久，speed 是行走速度。
-// 身高刻意壓在城牆高度（52m）與最高建築（約 48m）之下，
-// 不然大型巨人會直接高過天際線，反而看不出「大」。
+// 身高分三個級距，都拿房子當量尺（world.js 裡一般街廓房子的基礎高度約 18m，
+// 離市中心越近會再疊加到 40 多公尺，城牆頂是 52m）：
+//   HOUSE_HEIGHT / 2 → 半個房子高（小型）
+//   HOUSE_HEIGHT     → 跟房子差不多高（一般、奇行種——奇行種靠速度跟走位區分，不是體型）
+//   BIG_HEIGHT       → 現在這種、比房子更高一截的大型巨人（維持原本壓在天際線下的設定）
+const HOUSE_HEIGHT = 18;
+const BIG_HEIGHT = 25;
+
 export const TITAN_TYPES = {
-  small: { label: '小型', height: 7, napeHp: 55, speed: 9.5, damage: 18, color: 0xd9a689 },
-  normal: { label: '一般', height: 16, napeHp: 100, speed: 6.5, damage: 28, color: 0xcf9c7d },
-  large: { label: '大型', height: 25, napeHp: 165, speed: 5, damage: 42, color: 0xc08e6f },
-  abnormal: { label: '奇行種', height: 17, napeHp: 120, speed: 13, damage: 34, color: 0xb87f6a },
+  small: { label: '小型', height: HOUSE_HEIGHT / 2, napeHp: 55, speed: 9.5, damage: 18, color: 0xd9a689 },
+  normal: { label: '一般', height: HOUSE_HEIGHT, napeHp: 100, speed: 6.5, damage: 28, color: 0xcf9c7d },
+  large: { label: '大型', height: BIG_HEIGHT, napeHp: 165, speed: 5, damage: 42, color: 0xc08e6f },
+  abnormal: { label: '奇行種', height: HOUSE_HEIGHT, napeHp: 120, speed: 13, damage: 34, color: 0xb87f6a },
 };
 
 export const TITAN_ATTACK_COOLDOWN = 1.6;
