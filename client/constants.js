@@ -96,5 +96,6 @@ export const WAVE_GROWTH = 1.6; // 每波增加的數量
 // ── 城區 ─────────────────────────────────────────────────
 export const CITY_RADIUS = 300; // 城牆內半徑
 export const WALL_HEIGHT = 52;
-export const BLOCK_SIZE = 46; // 一個街廓的邊長
-export const STREET_WIDTH = 16;
+export const BLOCK_SIZE = 34; // 一個街廓的邊長（縮小過，房子改小一號、街道更密）
+export const STREET_WIDTH = 12;
+export const ROOF_PITCH_RATIO = 0.62; // 屋脊高度 = 屋頂跨距 × 這個比例，數字越大屋頂越陡

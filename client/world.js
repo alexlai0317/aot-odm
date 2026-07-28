@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CITY_RADIUS, WALL_HEIGHT, BLOCK_SIZE, STREET_WIDTH } from './constants.js';
+import { CITY_RADIUS, WALL_HEIGHT, BLOCK_SIZE, STREET_WIDTH, ROOF_PITCH_RATIO } from './constants.js';
 
 // 城區的生成與碰撞查詢。整座城是「圓形城牆 + 棋盤街廓」，
 // 房子高矮不一是刻意的：立體機動裝置需要密集且高度落差大的錨點才有的盪。
@@ -150,9 +150,9 @@ function buildDistrict(scene, hookables, buildings) {
           const x = cx + (sx - 0.5) * sub;
           const z = cz + (sz - 0.5) * sub;
 
-          // 越靠近市中心蓋得越高（也就越好盪）
+          // 越靠近市中心蓋得越高（也就越好盪），基礎高度壓低到跟房子同一個量級
           const centerBias = 1 - Math.min(1, distFromCenter / CITY_RADIUS);
-          const height = 10 + rand() * 16 + centerBias * 22;
+          const height = 6 + rand() * 10 + centerBias * 14;
 
           addBuilding(scene, hookables, buildings, x, z, w, d, height, rand);
         }
@@ -160,12 +160,13 @@ function buildDistrict(scene, hookables, buildings) {
     }
   }
 
-  // 幾座地標高塔，當作長距離移動的中繼錨點
+  // 幾座地標高塔，當作長距離移動的中繼錨點（房子縮小後跟著等比例降下來，
+  // 維持「明顯比房子高」的地標感，但不會突兀地比城牆還誇張）
   const towers = [
-    [0, -pitch * 2.2, 68],
-    [pitch * 2.6, pitch * 1.4, 60],
-    [-pitch * 2.8, pitch * 2.0, 74],
-    [-pitch * 1.2, -pitch * 3.4, 58],
+    [0, -pitch * 2.2, 42],
+    [pitch * 2.6, pitch * 1.4, 38],
+    [-pitch * 2.8, pitch * 2.0, 46],
+    [-pitch * 1.2, -pitch * 3.4, 36],
   ];
   for (const [x, z, h] of towers) {
     addBuilding(scene, hookables, buildings, x, z, 16, 16, h, rand, 0x6d7a86);
@@ -182,25 +183,52 @@ function addBuilding(scene, hookables, buildings, x, z, w, d, height, rand, forc
   scene.add(body);
   hookables.push(body);
 
-  // 屋頂做成薄薄一片深色板子、比本體大一圈，飛在空中時比較看得出哪裡可以站。
-  // 碰撞的可站立範圍必須跟這片視覺屋頂完全對齊——曾經只用本體的 w×d 判斷落地，
-  // 屋頂視覺上凸出去的那一圈看起來像實地，踩上去卻直接落空，邊界感覺很模糊。
-  const overhang = 1.2;
-  const roofW = w + overhang;
-  const roofD = d + overhang;
-  const roof = new THREE.Mesh(
-    new THREE.BoxGeometry(roofW, 0.8, roofD),
-    new THREE.MeshLambertMaterial({ color: ROOF_COLORS[Math.floor(rand() * ROOF_COLORS.length)] })
-  );
-  roof.position.set(x, height + 0.4, z);
+  const roofColor = ROOF_COLORS[Math.floor(rand() * ROOF_COLORS.length)];
+  const overhang = 0.8;
+  const pitchJitter = 0.85 + rand() * 0.3; // 每棟屋頂斜度略有差異，天際線才不會太整齊
+  const { mesh: roof, ridgeHeight, footprintW, footprintD } = buildGableRoof(w, d, overhang, pitchJitter, roofColor);
+  roof.position.set(x, height, z);
   scene.add(roof);
   hookables.push(roof);
 
   buildings.push({
-    minX: x - roofW / 2,
-    maxX: x + roofW / 2,
-    minZ: z - roofD / 2,
-    maxZ: z + roofD / 2,
-    height: height + 0.8, // 含屋頂板的厚度，站上去才不會腳陷進去
+    minX: x - footprintW / 2,
+    maxX: x + footprintW / 2,
+    minZ: z - footprintD / 2,
+    maxZ: z + footprintD / 2,
+    // 斜屋頂沒有真的平面可以站，落地判定簡化成屋脊那條線的高度——
+    // 站在屋頂範圍內視同站在脊線上，跟原作角色常常站在屋脊上取景是同一個抽象。
+    height: height + ridgeHeight,
   });
+}
+
+// 雙斜面的人字形屋頂（歐式老城常見的 Giebeldach），用三角形斷面沿屋脊方向拉伸做出來。
+// 屋脊永遠沿著建築物長邊，短邊才是屋頂傾斜下去的跨距，比例才會自然。
+function buildGableRoof(w, d, overhang, pitchJitter, color) {
+  const ridgeAlongX = w >= d;
+  const span = ridgeAlongX ? d : w;
+  const ridgeLen = ridgeAlongX ? w : d;
+
+  const halfSpan = span / 2 + overhang;
+  const ridgeHeight = (span / 2) * ROOF_PITCH_RATIO * pitchJitter;
+  const ridgeExtent = ridgeLen + overhang * 2;
+
+  const shape = new THREE.Shape();
+  shape.moveTo(-halfSpan, 0);
+  shape.lineTo(0, ridgeHeight);
+  shape.lineTo(halfSpan, 0);
+  shape.lineTo(-halfSpan, 0);
+
+  const geometry = new THREE.ExtrudeGeometry(shape, { depth: ridgeExtent, bevelEnabled: false });
+  geometry.translate(0, 0, -ridgeExtent / 2); // 沿屋脊方向置中，才能直接用建築中心點定位
+
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide }));
+  if (ridgeAlongX) mesh.rotation.y = Math.PI / 2; // 把拉伸方向（原本沿 Z）轉去對齊世界 X 軸
+
+  return {
+    mesh,
+    ridgeHeight,
+    footprintW: ridgeAlongX ? ridgeExtent : halfSpan * 2,
+    footprintD: ridgeAlongX ? halfSpan * 2 : ridgeExtent,
+  };
 }
