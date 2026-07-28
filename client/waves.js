@@ -22,8 +22,9 @@ const UNLOCK = [
 ];
 
 export class WaveManager {
-  constructor(titanManager) {
+  constructor(titanManager, world) {
     this.titans = titanManager;
+    this.world = world; // 拿來檢查生成點有沒有剛好疊在建築物裡
     this.reset();
   }
 
@@ -82,7 +83,7 @@ export class WaveManager {
 
     for (let i = 0; i < count; i++) {
       const typeKey = pickType(types, this.wave, i);
-      const { x, z } = spawnPosition(playerPos, i, count);
+      const { x, z } = spawnPosition(playerPos, i, count, this.world);
       this.titans.spawn(typeKey, x, z);
     }
     this.spawnedThisWave = count;
@@ -91,7 +92,7 @@ export class WaveManager {
     if (bossWave) {
       const cycle = Math.floor((this.wave / BOSS_WAVE_INTERVAL - 1) / BOSS_ORDER.length);
       const bossKey = BOSS_ORDER[((this.wave / BOSS_WAVE_INTERVAL - 1) % BOSS_ORDER.length + BOSS_ORDER.length) % BOSS_ORDER.length];
-      const { x, z } = spawnPosition(playerPos, 0, 1);
+      const { x, z } = spawnPosition(playerPos, 0, 1, this.world);
       boss = new BossTitan(bossKey, x, z, this.titans.scene);
       if (cycle > 0) {
         // 九隻輪完一輪之後重複出場，用倍率補一點強度，不然後期會變得太簡單
@@ -137,17 +138,44 @@ function pickType(types, wave, index) {
 }
 
 // 泰坦從玩家四周的環形外圈出現：不會直接生在臉上，也不用跑太久才碰到面
-function spawnPosition(playerPos, index, count) {
+function spawnPosition(playerPos, index, count, world) {
   const angle = (index / count) * Math.PI * 2 + Math.random() * 0.6;
-  const distance = 110 + Math.random() * 90;
-  let x = playerPos.x + Math.cos(angle) * distance;
-  let z = playerPos.z + Math.sin(angle) * distance;
+  let distance = 110 + Math.random() * 90;
+  let x, z;
 
-  const r = Math.hypot(x, z);
-  if (r > CITY_RADIUS - 20) {
-    const scale = (CITY_RADIUS - 20) / r;
-    x *= scale;
-    z *= scale;
+  // 城市變密之後，隨機點有機會剛好落在建築物的地基裡——泰坦沒有「穿牆」問題了
+  // 之後反而會直接卡死動不了，所以生成時要先確認腳下不是building，卡到就沿同一個
+  // 角度往外挪，挪到空地為止（有上限，避免真的挪不出去時卡死迴圈）
+  for (let attempt = 0; attempt < 8; attempt++) {
+    x = playerPos.x + Math.cos(angle) * distance;
+    z = playerPos.z + Math.sin(angle) * distance;
+
+    const r = Math.hypot(x, z);
+    if (r > CITY_RADIUS - 20) {
+      const scale = (CITY_RADIUS - 20) / r;
+      x *= scale;
+      z *= scale;
+    }
+
+    if (!world || !tooCloseToAnyBuilding(x, z, world.buildings)) break;
+    distance += 12;
   }
+
   return { x, z };
+}
+
+// 檢查的不只是「整個疊在建築物裡面」，還包含泰坦身體半徑的緩衝範圍——
+// 光看有沒有落在矩形內是不夠的：剛好貼在邊緣、離牆不到半個身位的生成點，
+// 一樣會讓分軸碰撞判定兩軸同時卡住，動彈不得。這裡用全種類裡最大的身體半徑
+// 當緩衝（頭目泰坦最高 48m，半徑約 10.6m），寧可挪遠一點也不要生成就卡死。
+const SPAWN_CLEARANCE = 11;
+function tooCloseToAnyBuilding(x, z, buildings) {
+  for (const b of buildings) {
+    const closestX = Math.max(b.minX, Math.min(x, b.maxX));
+    const closestZ = Math.max(b.minZ, Math.min(z, b.maxZ));
+    const dx = x - closestX;
+    const dz = z - closestZ;
+    if (dx * dx + dz * dz < SPAWN_CLEARANCE * SPAWN_CLEARANCE) return true;
+  }
+  return false;
 }

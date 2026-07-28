@@ -4,6 +4,8 @@ import {
   TITAN_ATTACK_COOLDOWN,
   TITAN_STAGGER_TIME,
   TITAN_LIMB_HP,
+  TITAN_WIND_TIME,
+  TITAN_BODY_RADIUS_SCALE,
   CITY_RADIUS,
 } from './constants.js';
 
@@ -159,6 +161,11 @@ export class Titan {
     return out.setFromMatrixPosition(this.nape.matrixWorld);
   }
 
+  // 預設一律面朝玩家；BossTitan 的逃跑型會覆寫成面朝反方向
+  getDesiredYaw(dx, dz) {
+    return Math.atan2(-dx, -dz);
+  }
+
   // 玩家是不是繞到背後了：把玩家位置轉到泰坦的座標系判斷
   isBehind(playerPos) {
     const dx = playerPos.x - this.group.position.x;
@@ -168,7 +175,7 @@ export class Titan {
     return dx * fx + dz * fz < 0;
   }
 
-  update(dt, playerPos, playerAlive) {
+  update(dt, playerPos, playerAlive, world) {
     if (this.state === 'dead') {
       this.deadTimer += dt;
       // 倒下：往前撲，同時整個沉進地面消失
@@ -196,43 +203,53 @@ export class Titan {
     const dz = playerPos.z - this.group.position.z;
     const dist = Math.hypot(dx, dz);
 
-    // 轉身面向玩家（有轉速上限，所以繞到背後是可行的戰術）
-    const desiredYaw = Math.atan2(-dx, -dz);
+    // 轉身面向玩家（有轉速上限，所以繞到背後是可行的戰術）。
+    // getDesiredYaw 讓子類別（例如 bossTitan.js 的逃跑型）可以覆寫成「轉身背對玩家」，
+    // 而不是直接讓身體反向平移——移動方向永遠等於面朝方向，這條規則不能被打破。
+    const desiredYaw = this.getDesiredYaw(dx, dz, dist);
     const turnRate = this.type.turnRate ?? (this.typeKey === 'abnormal' ? 3.2 : 1.5);
     this.yaw = approachAngle(this.yaw, desiredYaw, turnRate * dt);
     this.group.rotation.y = this.yaw;
 
     if (this.state === 'wind') {
       this.windTimer -= dt;
-      const t = 1 - Math.max(0, this.windTimer) / 0.5;
-      this.arms.ra.pivot.rotation.x = -Math.PI * 0.8 * Math.sin(t * Math.PI);
+      const t = 1 - Math.max(0, this.windTimer) / TITAN_WIND_TIME;
+      // 雙臂後拉再往前揮、上半身跟著前撲——攻擊前兆要夠明顯，玩家才看得出「要挨打了」
+      const swing = Math.sin(t * Math.PI);
+      this.arms.ra.pivot.rotation.x = -Math.PI * 0.9 * swing;
+      this.arms.la.pivot.rotation.x = -Math.PI * 0.5 * swing;
+      this.group.rotation.x = swing * 0.25;
       if (this.windTimer <= 0) {
         this.state = 'walk';
         this.arms.ra.pivot.rotation.x = 0;
+        this.arms.la.pivot.rotation.x = 0;
+        this.group.rotation.x = 0;
         this.pendingHit = true; // 由 TitanManager 結算傷害
       }
       return;
     }
 
-    const reach = this.height * 0.55;
+    const reach = this.height * 0.68;
     const canReachHeight = playerPos.y < this.height * 0.95;
 
     if (playerAlive && dist < reach && canReachHeight && this.attackCooldown === 0) {
       this.state = 'wind';
-      this.windTimer = 0.5;
+      this.windTimer = TITAN_WIND_TIME;
       this.attackCooldown = TITAN_ATTACK_COOLDOWN * (this.type.attackCooldownMult ?? 1);
       return;
     }
 
-    let moveX = 0;
-    let moveZ = 0;
-    if (dist > reach * 0.8) {
-      moveX = dx / (dist || 1);
-      moveZ = dz / (dist || 1);
+    // 移動方向永遠取「目前面朝的方向」，不是直接飄向玩家——
+    // 不然轉身還沒跟上時，身體卻已經照玩家方位直線平移，看起來就像用背面在走路。
+    let moveX = -Math.sin(this.yaw);
+    let moveZ = -Math.cos(this.yaw);
+    if (dist <= reach * 0.8) {
+      moveX = 0;
+      moveZ = 0;
     }
 
-    if (this.typeKey === 'abnormal') {
-      // 異常型：在追擊方向上疊一個會變的偏移量，路徑就不再是直線
+    if (this.typeKey === 'abnormal' && (moveX !== 0 || moveZ !== 0)) {
+      // 異常型：在面朝方向上疊一個會變的偏移量，路徑就不再是直線
       this.wanderTimer -= dt;
       if (this.wanderTimer <= 0) {
         this.wanderTimer = 0.8 + Math.random() * 1.2;
@@ -245,9 +262,25 @@ export class Titan {
       moveZ /= l;
     }
 
+    // X、Z 軸分開嘗試移動，被建築物擋住的那一軸就取消、另一軸照樣通過——
+    // 這樣撞到牆的時候會自然沿著牆滑，而不是每幀「往前撞、被推出、再往前撞」卡著抖動
+    // （泰坦沒有速度/動量概念，用推出去的做法在這裡行不通，只有分軸判定才滑得動）。
     const step = this.speed * dt;
-    this.group.position.x += moveX * step;
-    this.group.position.z += moveZ * step;
+    const bodyRadius = this.height * TITAN_BODY_RADIUS_SCALE;
+    const pos = this.group.position;
+
+    const nextX = pos.x + moveX * step;
+    const movedX = !world || !buildingBlocked(nextX, pos.z, bodyRadius, world);
+    if (movedX) pos.x = nextX;
+
+    const nextZ = pos.z + moveZ * step;
+    const movedZ = !world || !buildingBlocked(pos.x, nextZ, bodyRadius, world);
+    if (movedZ) pos.z = nextZ;
+
+    // 兩軸都被擋下來：通常是卡在牆角，或身體剛好貼著建築物邊緣站著。
+    // 分軸判定在這種情況下會完全卡死，所以只在「真的兩邊都不能動」時才推開一點點，
+    // 不是每幀都推——推開後下一幀開始照樣走分軸判定，不會變回原本推來推去的問題。
+    if (world && !movedX && !movedZ) nudgeAwayFromBuildings(pos, bodyRadius, world);
 
     // 不要走出城牆
     const r = Math.hypot(this.group.position.x, this.group.position.z);
@@ -256,7 +289,7 @@ export class Titan {
       this.group.position.z *= CITY_RADIUS / r;
     }
 
-    this.animateWalk(dt, Math.hypot(moveX, moveZ) > 0.01);
+    this.animateWalk(dt, moveX !== 0 || moveZ !== 0);
   }
 
   animateWalk(dt, moving) {
@@ -342,9 +375,9 @@ export class TitanManager {
     return list;
   }
 
-  update(dt, player, onPlayerHit) {
+  update(dt, player, onPlayerHit, world) {
     for (const t of this.titans) {
-      t.update(dt, player.position, player.alive);
+      t.update(dt, player.position, player.alive, world);
       if (t.pendingHit) {
         t.pendingHit = false;
         const dist = Math.hypot(
@@ -366,6 +399,8 @@ export class TitanManager {
       }
     }
 
+    this.separateTitans();
+
     // 屍體沉到地面下就回收
     const remaining = [];
     for (const t of this.titans) {
@@ -380,6 +415,30 @@ export class TitanManager {
     this.titans = remaining;
 
     this.updateSteam(dt);
+  }
+
+  // 泰坦彼此之間簡單的圓形分離，不然好幾隻同時撲向玩家時會疊在同一個位置上、
+  // 看起來像穿模。死掉/硬直中的不參與（硬直中被推開會很奇怪）
+  separateTitans() {
+    const active = this.titans.filter((t) => t.alive && t.state !== 'stagger');
+    for (let i = 0; i < active.length; i++) {
+      for (let j = i + 1; j < active.length; j++) {
+        const a = active[i];
+        const b = active[j];
+        const dx = b.group.position.x - a.group.position.x;
+        const dz = b.group.position.z - a.group.position.z;
+        const dist = Math.hypot(dx, dz) || 0.001;
+        const minDist = (a.height + b.height) * (TITAN_BODY_RADIUS_SCALE * 0.9);
+        if (dist >= minDist) continue;
+        const push = (minDist - dist) / 2;
+        const nx = dx / dist;
+        const nz = dz / dist;
+        a.group.position.x -= nx * push;
+        a.group.position.z -= nz * push;
+        b.group.position.x += nx * push;
+        b.group.position.z += nz * push;
+      }
+    }
   }
 
   // 泰坦死亡時冒出的蒸氣
@@ -443,6 +502,53 @@ export class TitanManager {
       }
     }
     return { titan: best, distance: bestDist };
+  }
+}
+
+// 泰坦 vs 建築物：純粹的「這個位置站得住嗎」布林判定，跟玩家用同一份 world.buildings 資料。
+// 用在分軸移動上（見上面的 update()），移動被擋的那一軸取消、另一軸照樣通過，
+// 效果上就是貼牆滑動；不用推出去的做法，因為泰坦沒有速度/動量概念，推出去只會抖動。
+function buildingBlocked(x, z, radius, world) {
+  for (const b of world.buildings) {
+    const closestX = Math.max(b.minX, Math.min(x, b.maxX));
+    const closestZ = Math.max(b.minZ, Math.min(z, b.maxZ));
+    const dx = x - closestX;
+    const dz = z - closestZ;
+    if (dx * dx + dz * dz < radius * radius) return true;
+  }
+  return false;
+}
+
+// 最後手段：兩軸都卡住時，直接朝最近那棟建築物的反方向推開一點點
+function nudgeAwayFromBuildings(position, radius, world) {
+  for (const b of world.buildings) {
+    const closestX = Math.max(b.minX, Math.min(position.x, b.maxX));
+    const closestZ = Math.max(b.minZ, Math.min(position.z, b.maxZ));
+    const dx = position.x - closestX;
+    const dz = position.z - closestZ;
+    const distSq = dx * dx + dz * dz;
+    if (distSq >= radius * radius) continue;
+
+    if (dx === 0 && dz === 0) {
+      // 整個身體都陷在方塊裡（例如手動放置或被彼此分離推進去），
+      // 這種情況「最近點」就是自己，方向向量算不出來，改成往最近的側面推出去
+      const toMinX = position.x - b.minX;
+      const toMaxX = b.maxX - position.x;
+      const toMinZ = position.z - b.minZ;
+      const toMaxZ = b.maxZ - position.z;
+      const m = Math.min(toMinX, toMaxX, toMinZ, toMaxZ);
+      if (m === toMinX) position.x = b.minX - radius;
+      else if (m === toMaxX) position.x = b.maxX + radius;
+      else if (m === toMinZ) position.z = b.minZ - radius;
+      else position.z = b.maxZ + radius;
+      return;
+    }
+
+    const dist = Math.sqrt(distSq);
+    const push = radius - dist + 0.05;
+    position.x += (dx / dist) * push;
+    position.z += (dz / dist) * push;
+    return; // 一次只處理最先撞到的一棟，避免這一幀被好幾棟建築物拉來拉去
   }
 }
 

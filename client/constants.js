@@ -13,7 +13,7 @@ export const HP_REGEN_RATE = 4.5; // 每秒回復量
 export const HP_REGEN_SAFE_DISTANCE = 40; // 這個距離內有活著的泰坦就中斷回血
 export const GRAVITY = 22;
 export const AIR_DRAG = 0.19; // 每秒速度衰減比例（沒有這個會越盪越快）
-export const MAX_SPEED = 68;
+export const MAX_SPEED = 58; // 硬上限，換算約 209 km/h，瓦斯全開也不會噴到誇張的距離
 export const BRAKE_DRAG = 3.6; // 按住煞車時的速度衰減（每秒），大約 0.2 秒砍半
 export const LANDING_FRICTION = 9; // 落地後的地面摩擦，讓人停得住而不是滑出屋頂
 
@@ -46,7 +46,7 @@ export const ROPE_DAMP = 15; // 削掉離心方向速度的比例（每秒）
 
 // ── 瓦斯 ─────────────────────────────────────────────────
 export const GAS_MAX = 100;
-export const GAS_THRUST = 84; // 噴射推力（沿視線方向）
+export const GAS_THRUST = 58; // 噴射推力（沿視線方向）
 export const GAS_BURN_RATE = 17; // 噴射時每秒消耗
 export const GAS_HOOK_BURN = 2.5; // 掛著鉤索時每秒的基礎消耗（捲揚機也吃瓦斯）
 export const GAS_REFILL_RATE = 40; // 雙腳著地時的補充速度
@@ -87,6 +87,8 @@ export const TITAN_TYPES = {
 export const TITAN_ATTACK_COOLDOWN = 1.6;
 export const TITAN_STAGGER_TIME = 1.8; // 砍斷手腳後的硬直
 export const TITAN_LIMB_HP = 45; // 手腳的耐久，砍掉會硬直
+export const TITAN_WIND_TIME = 0.6; // 攻擊前的蓄力時間，雙臂後拉＋上半身前撲，是明顯的攻擊前兆
+export const TITAN_BODY_RADIUS_SCALE = 0.22; // 身體碰撞半徑＝身高 × 這個比例，撞建築物/撞彼此都用這個
 
 // ── 頭目泰坦（boss）───────────────────────────────────────
 // 九隻原創的頭目泰坦，全都比「大型」泰坦（25m）明顯更高、後頸耐久也拉到需要
@@ -154,6 +156,18 @@ export const TITAN_FORM_PUNCH_REACH = 9;
 export const TITAN_FORM_PUNCH_TIME = 0.55; // 一次揮拳的總時長
 export const TITAN_FORM_PUNCH_HIT_WINDOW = [0.15, 0.32]; // 揮拳過程中真正有判定的時間區段
 export const TITAN_FORM_PUNCH_COOLDOWN = 0.35; // 兩拳之間的最短間隔
+
+// 踢擊：滑鼠右鍵，reach 比拳頭遠、傷害略低，跟拳頭形成「近戰用拳、稍遠用腳」的節奏差異
+export const TITAN_FORM_KICK_DAMAGE = 200;
+export const TITAN_FORM_KICK_REACH = 12;
+export const TITAN_FORM_KICK_TIME = 0.5;
+export const TITAN_FORM_KICK_HIT_WINDOW = [0.18, 0.34];
+export const TITAN_FORM_KICK_COOLDOWN = 0.45;
+
+// 變身瞬間的視覺特效：一圈小閃電＋一次大爆炸衝擊波
+export const TITAN_TRANSFORM_EXPLOSION_RADIUS = 12;
+export const TITAN_TRANSFORM_EXPLOSION_DURATION = 0.7;
+export const TITAN_TRANSFORM_LIGHTNING_COUNT = 10;
 
 // ── 關卡 ─────────────────────────────────────────────────
 export const WAVE_BREAK_TIME = 8; // 波次之間的喘息時間（也是主要的回血窗口）

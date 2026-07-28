@@ -3,10 +3,12 @@ import { createWorld } from './world.js';
 import { Player } from './player.js';
 import { HookGear } from './hookGear.js';
 import { ViewModel } from './viewmodel.js';
+import { TitanFistViewModel } from './titanFists.js';
+import { TransformEffects } from './transformFx.js';
 import { TitanManager } from './titan.js';
 import { WaveManager } from './waves.js';
 import { Hud } from './hud.js';
-import { resolveSwing, resolvePunch, scoreForKill, napeInReach } from './combat.js';
+import { resolveSwing, resolvePunch, resolveKick, scoreForKill, napeInReach } from './combat.js';
 import * as audio from './audio.js';
 import {
   BLADE_SWING_TIME,
@@ -16,6 +18,9 @@ import {
   TITAN_FORM_PUNCH_TIME,
   TITAN_FORM_PUNCH_HIT_WINDOW,
   TITAN_FORM_PUNCH_COOLDOWN,
+  TITAN_FORM_KICK_TIME,
+  TITAN_FORM_KICK_HIT_WINDOW,
+  TITAN_FORM_KICK_COOLDOWN,
   TITAN_FORM_GAUGE_PER_NAPE_HIT,
   TITAN_FORM_GAUGE_PER_BODY_HIT,
   TITAN_FORM_GAUGE_PER_KILL,
@@ -34,8 +39,10 @@ world.scene.add(camera); // viewmodel 掛在 camera 底下，camera 必須進場
 const player = new Player(camera, canvas);
 const gear = new HookGear(world.scene, camera);
 const viewModel = new ViewModel(camera);
+const fistViewModel = new TitanFistViewModel(camera);
+const transformFx = new TransformEffects(world.scene);
 const titans = new TitanManager(world.scene);
-const waves = new WaveManager(titans);
+const waves = new WaveManager(titans, world);
 const hud = new Hud();
 
 const state = {
@@ -47,6 +54,7 @@ const state = {
   lastSwingTimer: 0,
   lastReloadTimer: 0,
   lastPunchTimer: 0,
+  lastKickTimer: 0,
   wasTitanForm: false,
 };
 
@@ -94,6 +102,7 @@ function startGame() {
   state.deathTimer = 0;
   state.running = true;
   state.lastPunchTimer = 0;
+  state.lastKickTimer = 0;
   state.wasTitanForm = false;
 
   overlay.classList.add('hidden');
@@ -194,7 +203,7 @@ function handleHit(result) {
   }
 }
 
-// ── 巨人形態揮拳結算 ──────────────────────────────────────
+// ── 巨人形態拳腳結算 ──────────────────────────────────────
 function updatePunch() {
   if (player.punchRequested) {
     player.punchRequested = false;
@@ -202,26 +211,52 @@ function updatePunch() {
   }
 
   if (player.punchTimer > 0 && state.lastPunchTimer === 0) {
+    fistViewModel.startPunch();
     audio.sfx.punch();
   }
   state.lastPunchTimer = player.punchTimer;
 
-  if (player.punchTimer <= 0 || player.punchHitDone) return;
-  const elapsed = TITAN_FORM_PUNCH_TIME - player.punchTimer;
-  if (elapsed < TITAN_FORM_PUNCH_HIT_WINDOW[0] || elapsed > TITAN_FORM_PUNCH_HIT_WINDOW[1]) return;
+  if (player.punchTimer > 0 && !player.punchHitDone) {
+    const elapsed = TITAN_FORM_PUNCH_TIME - player.punchTimer;
+    if (elapsed >= TITAN_FORM_PUNCH_HIT_WINDOW[0] && elapsed <= TITAN_FORM_PUNCH_HIT_WINDOW[1]) {
+      const result = resolvePunch(player, titans, camera);
+      player.punchHitDone = true;
+      player.punchCooldown = TITAN_FORM_PUNCH_COOLDOWN;
+      reportTitanFormHit(result, '一拳');
+    }
+  }
 
-  const result = resolvePunch(player, titans, camera);
-  player.punchHitDone = true;
-  player.punchCooldown = TITAN_FORM_PUNCH_COOLDOWN;
+  if (player.kickRequested) {
+    player.kickRequested = false;
+    player.tryKick();
+  }
+
+  if (player.kickTimer > 0 && state.lastKickTimer === 0) {
+    fistViewModel.startKick();
+    audio.sfx.punch();
+  }
+  state.lastKickTimer = player.kickTimer;
+
+  if (player.kickTimer > 0 && !player.kickHitDone) {
+    const elapsed = TITAN_FORM_KICK_TIME - player.kickTimer;
+    if (elapsed >= TITAN_FORM_KICK_HIT_WINDOW[0] && elapsed <= TITAN_FORM_KICK_HIT_WINDOW[1]) {
+      const result = resolveKick(player, titans, camera);
+      player.kickHitDone = true;
+      player.kickCooldown = TITAN_FORM_KICK_COOLDOWN;
+      reportTitanFormHit(result, '一腳');
+    }
+  }
+}
+
+function reportTitanFormHit(result, verb) {
   if (result.type === 'miss') return;
-
   if (result.type === 'kill') {
     state.score += scoreForKill(result.titan, 40, false);
     state.kills += 1;
     hud.setScore(state.score, state.kills);
     titans.emitSteam(result.titan.napeWorldPosition().clone(), result.titan.height * 0.35);
     audio.sfx.kill();
-    hud.feed(`一拳擊殺 <b>${result.titan.type.label}泰坦</b>`, 'kill');
+    hud.feed(`${verb}擊殺 <b>${result.titan.type.label}泰坦</b>`, 'kill');
   } else {
     audio.sfx.fleshHit();
   }
@@ -249,13 +284,19 @@ function frame() {
     if (!player.titanFormActive) {
       gear.render(player.position);
       viewModel.update(dt, player);
+    } else {
+      fistViewModel.update(dt, player);
     }
-    titans.update(dt, player, onPlayerHit);
+    viewModel.group.visible = !player.titanFormActive;
+    fistViewModel.group.visible = player.titanFormActive;
+    transformFx.update(dt);
+    titans.update(dt, player, onPlayerHit, world);
 
     if (player.titanFormActive !== state.wasTitanForm) {
       state.wasTitanForm = player.titanFormActive;
       if (player.titanFormActive) {
         gear.detachAll();
+        transformFx.spawn(player.position);
         audio.sfx.transform();
         hud.toast('巨人化！', '', 1400);
       } else {

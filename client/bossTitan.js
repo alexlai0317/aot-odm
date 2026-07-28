@@ -55,7 +55,16 @@ export class BossTitan extends Titan {
     }
   }
 
-  update(dt, playerPos, playerAlive) {
+  // 遊獵泰坦：玩家靠太近時轉身背對玩家逃跑——覆寫「面朝方向」而不是碰移動方向，
+  // 這樣移動永遠等於面朝方向這條規則才不會被打破（逃跑也是正常的「往前走」，只是面朝反方向）。
+  getDesiredYaw(dx, dz, dist) {
+    if (this.ability === 'evade' && dist < this.type.fleeDistance) {
+      return super.getDesiredYaw(dx, dz) + Math.PI;
+    }
+    return super.getDesiredYaw(dx, dz);
+  }
+
+  update(dt, playerPos, playerAlive, world) {
     // 重甲的衝鋒會整幀接管移動，蓄力／衝鋒／硬直期間跳過一般泰坦的移動與攻擊邏輯
     if (this.ability === 'charge' && this.state !== 'dead' && this.state !== 'stagger') {
       const handled = this.updateCharge(dt, playerPos);
@@ -65,18 +74,7 @@ export class BossTitan extends Titan {
       }
     }
 
-    // 遊獵泰坦：玩家靠太近時把速度暫時反向，逃跑方向就是「朝玩家的反方向」
-    let restoreSpeed = null;
-    if (this.ability === 'evade' && this.state !== 'dead' && this.state !== 'stagger') {
-      const dist = Math.hypot(playerPos.x - this.group.position.x, playerPos.z - this.group.position.z);
-      if (dist < this.type.fleeDistance) {
-        restoreSpeed = this.speed;
-        this.speed = -Math.abs(this.speed) * 1.15;
-      }
-    }
-
-    super.update(dt, playerPos, playerAlive);
-    if (restoreSpeed !== null) this.speed = restoreSpeed;
+    super.update(dt, playerPos, playerAlive, world);
 
     if (this.state === 'dead') {
       this.updateProjectiles(dt);
@@ -90,7 +88,7 @@ export class BossTitan extends Titan {
       case 'spike': this.updateSpike(dt, playerPos); break;
       case 'enrage': this.updateEnrage(); break;
       case 'rally': this.updateRally(dt); break;
-      default: break; // frenzy／evade 純靠基礎數值與上面的速度反轉，不需要額外邏輯
+      default: break; // frenzy／evade 純靠基礎數值與上面覆寫的面朝方向，不需要額外邏輯
     }
 
     this.updateProjectiles(dt);

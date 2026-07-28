@@ -9,6 +9,8 @@ import {
   BLADE_SPEED_DAMAGE,
   TITAN_FORM_PUNCH_DAMAGE,
   TITAN_FORM_PUNCH_REACH,
+  TITAN_FORM_KICK_DAMAGE,
+  TITAN_FORM_KICK_REACH,
 } from './constants.js';
 
 // 揮刀的命中結算。
@@ -142,6 +144,14 @@ export function scoreForKill(titan, speed, airborne) {
 // 巨人形態的拳頭：固定傷害、任何角度都算數（不像刀刃一定要繞背），
 // 直接打在後頸耐久上——這是「巨人跟巨人正面對幹」跟「鋼索繞背偷襲」刻意做出的手感差異。
 export function resolvePunch(player, titanManager, camera) {
+  return resolveTitanFormStrike(player, titanManager, camera, TITAN_FORM_PUNCH_REACH, TITAN_FORM_PUNCH_DAMAGE, 'punch');
+}
+
+export function resolveKick(player, titanManager, camera) {
+  return resolveTitanFormStrike(player, titanManager, camera, TITAN_FORM_KICK_REACH, TITAN_FORM_KICK_DAMAGE, 'kick');
+}
+
+function resolveTitanFormStrike(player, titanManager, camera, reach, damage, label) {
   camera.getWorldDirection(_forward);
 
   let best = null;
@@ -152,13 +162,13 @@ export function resolvePunch(player, titanManager, camera) {
     const dx = player.position.x - pos.x;
     const dz = player.position.z - pos.z;
     const horizontal = Math.max(0, Math.hypot(dx, dz) - titan.height * 0.22);
-    if (horizontal > TITAN_FORM_PUNCH_REACH) continue;
+    if (horizontal > reach) continue;
 
     const withinHeight = player.position.y > -2 && player.position.y < titan.height * 1.15;
     if (!withinHeight) continue;
 
     _toTarget.set(-dx, 0, -dz).normalize();
-    if (_toTarget.dot(_forward) < 0.2) continue; // 必須大致朝著目標揮拳
+    if (_toTarget.dot(_forward) < 0.2) continue; // 必須大致朝著目標出招
 
     if (horizontal < bestDist) {
       bestDist = horizontal;
@@ -167,6 +177,6 @@ export function resolvePunch(player, titanManager, camera) {
   }
 
   if (!best) return { type: 'miss' };
-  const killed = best.damageNape(TITAN_FORM_PUNCH_DAMAGE);
-  return { type: killed ? 'kill' : 'punch', titan: best, damage: TITAN_FORM_PUNCH_DAMAGE };
+  const killed = best.damageNape(damage);
+  return { type: killed ? 'kill' : label, titan: best, damage };
 }

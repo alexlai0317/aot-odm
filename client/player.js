@@ -36,6 +36,7 @@ import {
   TITAN_FORM_EYE_RATIO,
   TITAN_FORM_MOVE_SPEED,
   TITAN_FORM_PUNCH_TIME,
+  TITAN_FORM_KICK_TIME,
 } from './constants.js';
 
 // 玩家：視角、移動、瓦斯、刀刃狀態。
@@ -93,6 +94,10 @@ export class Player {
     this.punchTimer = 0; // > 0 代表正在揮拳
     this.punchCooldown = 0;
     this.punchHitDone = false;
+    this.kickRequested = false; // 滑鼠右鍵在巨人形態下的邊緣觸發旗標（拳腳的「腳」）
+    this.kickTimer = 0;
+    this.kickCooldown = 0;
+    this.kickHitDone = false;
 
     this.bindEvents();
   }
@@ -116,7 +121,10 @@ export class Player {
         this.hookInput[0] = true;
         this.punchRequested = true; // 巨人形態下左鍵改成揮拳，由 main.js 依 titanFormActive 決定用途
       }
-      if (e.button === 2) this.hookInput[1] = true;
+      if (e.button === 2) {
+        this.hookInput[1] = true;
+        this.kickRequested = true; // 巨人形態下右鍵改成踢擊
+      }
     });
     window.addEventListener('mouseup', (e) => {
       if (e.button === 0) this.hookInput[0] = false;
@@ -210,6 +218,8 @@ export class Player {
     this.velocity.set(0, 0, 0);
     this.punchTimer = 0;
     this.punchCooldown = 0;
+    this.kickTimer = 0;
+    this.kickCooldown = 0;
     return true;
   }
 
@@ -224,6 +234,12 @@ export class Player {
     if (!this.titanFormActive || this.punchTimer > 0 || this.punchCooldown > 0) return;
     this.punchTimer = TITAN_FORM_PUNCH_TIME;
     this.punchHitDone = false;
+  }
+
+  tryKick() {
+    if (!this.titanFormActive || this.kickTimer > 0 || this.kickCooldown > 0) return;
+    this.kickTimer = TITAN_FORM_KICK_TIME;
+    this.kickHitDone = false;
   }
 
   takeDamage(amount) {
@@ -351,8 +367,9 @@ export class Player {
     if (!this.keys.gas || this.gas <= 0 || this.grounded) return;
     // 噴射方向是視線方向：想去哪就看哪
     this.camera.getWorldDirection(_forward);
-    // 沒掛鉤索時推力打折，逼玩家用鉤索移動而不是一路噴到底
-    const power = hooked ? 1 : 0.75;
+    // 沒掛鉤索時推力打折更多，逼玩家用鉤索移動而不是一路噴到底——
+    // 這個折扣也順便壓住「單靠瓦斯就噴出誇張距離」的問題
+    const power = hooked ? 1 : 0.55;
     this.velocity.addScaledVector(_forward, GAS_THRUST * power * dt);
     this.gas = Math.max(0, this.gas - GAS_BURN_RATE * dt);
   }
@@ -364,6 +381,8 @@ export class Player {
     this.titanFormTimer -= dt;
     if (this.punchTimer > 0) this.punchTimer = Math.max(0, this.punchTimer - dt);
     if (this.punchCooldown > 0) this.punchCooldown = Math.max(0, this.punchCooldown - dt);
+    if (this.kickTimer > 0) this.kickTimer = Math.max(0, this.kickTimer - dt);
+    if (this.kickCooldown > 0) this.kickCooldown = Math.max(0, this.kickCooldown - dt);
     if (this.titanFormTimer <= 0) {
       this.revertTitanForm();
       this.applyCamera(dt);
