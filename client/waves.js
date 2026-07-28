@@ -9,7 +9,7 @@ import {
   BOSS_ESCORT_SCALE,
   BOSS_TITAN_TYPES,
   TITAN_TYPES,
-  TITAN_BODY_RADIUS_SCALE,
+  TITAN_COLLISION_RADIUS_SCALE,
 } from './constants.js';
 import { BossTitan } from './bossTitan.js';
 
@@ -85,7 +85,7 @@ export class WaveManager {
 
     for (let i = 0; i < count; i++) {
       const typeKey = pickType(types, this.wave, i);
-      const radius = TITAN_TYPES[typeKey].height * TITAN_BODY_RADIUS_SCALE;
+      const radius = TITAN_TYPES[typeKey].height * TITAN_COLLISION_RADIUS_SCALE;
       const { x, z } = spawnPosition(playerPos, i, count, this.world, radius);
       this.titans.spawn(typeKey, x, z);
     }
@@ -95,7 +95,7 @@ export class WaveManager {
     if (bossWave) {
       const cycle = Math.floor((this.wave / BOSS_WAVE_INTERVAL - 1) / BOSS_ORDER.length);
       const bossKey = BOSS_ORDER[((this.wave / BOSS_WAVE_INTERVAL - 1) % BOSS_ORDER.length + BOSS_ORDER.length) % BOSS_ORDER.length];
-      const bossRadius = BOSS_TITAN_TYPES[bossKey].height * TITAN_BODY_RADIUS_SCALE;
+      const bossRadius = BOSS_TITAN_TYPES[bossKey].height * TITAN_COLLISION_RADIUS_SCALE;
       const { x, z } = spawnPosition(playerPos, 0, 1, this.world, bossRadius);
       boss = new BossTitan(bossKey, x, z, this.titans.scene);
       if (cycle > 0) {
@@ -141,10 +141,12 @@ function pickType(types, wave, index) {
   return pool[Math.min(pool.length - 1, idx)];
 }
 
-// 泰坦從玩家四周的環形外圈出現：不會直接生在臉上，也不用跑太久才碰到面
+// 泰坦從玩家四周的環形外圈出現：不會直接生在臉上，也不用跑太久才碰到面。
+// 距離故意壓得比較近——泰坦沒有路徑規劃，密集街區裡實際前進速度打了折扣，
+// 生成太遠會變成「泰坦其實有生成，只是永遠走不到玩家看得到的地方」。
 function spawnPosition(playerPos, index, count, world, radius) {
   const angle = (index / count) * Math.PI * 2 + Math.random() * 0.6;
-  let distance = 110 + Math.random() * 90;
+  let distance = 75 + Math.random() * 65;
   let x, z;
 
   // 城市變密之後，隨機點有機會剛好貼在建築物邊緣、卡進碰撞緩衝範圍裡，

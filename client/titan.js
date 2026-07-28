@@ -6,6 +6,7 @@ import {
   TITAN_LIMB_HP,
   TITAN_WIND_TIME,
   TITAN_BODY_RADIUS_SCALE,
+  TITAN_COLLISION_RADIUS_SCALE,
   CITY_RADIUS,
 } from './constants.js';
 
@@ -42,6 +43,12 @@ export class Titan {
     // 異常型會亂跑，不是直線衝過來
     this.wander = new THREE.Vector3();
     this.wanderTimer = 0;
+    // 卡住繞牆用：定期檢查跟玩家的距離有沒有真的縮短、目前繞的方向（1/-1，0=還沒挑）
+    this.progressCheckTimer = 0;
+    this.progressDistRef = null;
+    this.stuck = false;
+    this.hardStuckTimer = 0;
+    this.sidestepDir = 0;
 
     this.group = new THREE.Group();
     this.group.position.set(x, 0, z);
@@ -262,11 +269,43 @@ export class Titan {
       moveZ /= l;
     }
 
+    // 卡住偵測：光看「這一幀有沒有被完全擋住」不夠，密集街區常常是
+    // 「技術上還在動，但只是沿著牆滑，淨方向沒有真的往玩家靠近」——
+    // 例如牆面剛好跟目標方向垂直，沿牆滑一輩子也到不了。改成每隔一小段時間
+    // 直接檢查跟玩家的實際距離有沒有真的縮短，抓不到這種假移動就沒意義。
+    this.progressCheckTimer = (this.progressCheckTimer || 0) + dt;
+    if (this.progressDistRef == null) this.progressDistRef = dist;
+
+    if (this.progressCheckTimer >= 0.5) {
+      const expectedProgress = this.speed * this.progressCheckTimer * 0.35; // 抓 35% 當及格線，考慮沿牆滑本來就會打折
+      const actualProgress = this.progressDistRef - dist;
+      this.stuck = dist > reach && actualProgress < expectedProgress;
+      this.progressCheckTimer = 0;
+      this.progressDistRef = dist;
+    }
+
+    if (this.stuck && (moveX !== 0 || moveZ !== 0)) {
+      // 側向偏移「繞牆」：方向固定到真的脫困為止，不然每次重新隨機挑會在原地抖動
+      const rightX = Math.cos(this.yaw);
+      const rightZ = -Math.sin(this.yaw);
+      if (!this.sidestepDir) this.sidestepDir = Math.random() < 0.5 ? 1 : -1;
+      moveX += rightX * this.sidestepDir * 1.4;
+      moveZ += rightZ * this.sidestepDir * 1.4;
+      const l = Math.hypot(moveX, moveZ) || 1;
+      moveX /= l;
+      moveZ /= l;
+    } else {
+      this.sidestepDir = 0;
+    }
+
     // X、Z 軸分開嘗試移動，被建築物擋住的那一軸就取消、另一軸照樣通過——
     // 這樣撞到牆的時候會自然沿著牆滑，而不是每幀「往前撞、被推出、再往前撞」卡著抖動
     // （泰坦沒有速度/動量概念，用推出去的做法在這裡行不通，只有分軸判定才滑得動）。
+    // 碰撞用的半徑刻意比視覺身體小（TITAN_COLLISION_RADIUS_SCALE），密集街區的
+    // 建築物轉角很多，用完整身體半徑做碰撞連轉角都繞不過去，寧可犧牲一點點
+    // 視覺上的貼合度，也要讓泰坦真的走得到玩家面前。
     const step = this.speed * dt;
-    const bodyRadius = this.height * TITAN_BODY_RADIUS_SCALE;
+    const bodyRadius = this.height * TITAN_COLLISION_RADIUS_SCALE;
     const pos = this.group.position;
 
     const nextX = pos.x + moveX * step;
@@ -281,6 +320,23 @@ export class Titan {
     // 分軸判定在這種情況下會完全卡死，所以只在「真的兩邊都不能動」時才推開一點點，
     // 不是每幀都推——推開後下一幀開始照樣走分軸判定，不會變回原本推來推去的問題。
     if (world && !movedX && !movedZ) nudgeAwayFromBuildings(pos, bodyRadius, world);
+
+    // 保底機制：進度檢查連續判定「卡住」達到一定次數（約 2.4 秒都沒有實質進展），
+    // 就直接無視碰撞、朝玩家方向硬挪一段明顯的距離——寧可偶爾看起來穿過牆角一下，
+    // 也不要真的讓泰坦卡在同一個地方走不出來。這是絕對不會卡死的最後防線。
+    if (this.stuck) {
+      this.hardStuckTimer = (this.hardStuckTimer || 0) + dt;
+      if (this.hardStuckTimer > 1.2) {
+        const invDist = 1 / (dist || 1);
+        pos.x += dx * invDist * 8;
+        pos.z += dz * invDist * 8;
+        this.hardStuckTimer = 0;
+        this.stuck = false;
+        this.sidestepDir = 0;
+      }
+    } else {
+      this.hardStuckTimer = 0;
+    }
 
     // 不要走出城牆
     const r = Math.hypot(this.group.position.x, this.group.position.z);

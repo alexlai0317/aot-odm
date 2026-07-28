@@ -77,18 +77,26 @@ export const BLADE_SPEED_DAMAGE = 3.4; // 每 1 m/s 換算的傷害
 const HOUSE_HEIGHT = 18;
 const BIG_HEIGHT = 25;
 
+// speed 看起來比實際步行速度快，是刻意的：泰坦沒有真的路徑規劃，撞到建築物
+// 只會沿牆滑或側移繞角，密集街區裡的實際前進速度比帳面數字慢上一大截。
+// 數字調高是在補償這個導航損耗，不是要泰坦變成短跑選手。
 export const TITAN_TYPES = {
-  small: { label: '小型', height: HOUSE_HEIGHT / 2, napeHp: 55, speed: 9.5, damage: 18, color: 0xd9a689 },
-  normal: { label: '一般', height: HOUSE_HEIGHT, napeHp: 100, speed: 6.5, damage: 28, color: 0xcf9c7d },
-  large: { label: '大型', height: BIG_HEIGHT, napeHp: 165, speed: 5, damage: 42, color: 0xc08e6f },
-  abnormal: { label: '異常型', height: HOUSE_HEIGHT, napeHp: 120, speed: 13, damage: 34, color: 0xb87f6a },
+  small: { label: '小型', height: HOUSE_HEIGHT / 2, napeHp: 55, speed: 13, damage: 18, color: 0xd9a689 },
+  normal: { label: '一般', height: HOUSE_HEIGHT, napeHp: 100, speed: 9.5, damage: 28, color: 0xcf9c7d },
+  large: { label: '大型', height: BIG_HEIGHT, napeHp: 165, speed: 7, damage: 42, color: 0xc08e6f },
+  abnormal: { label: '異常型', height: HOUSE_HEIGHT, napeHp: 120, speed: 16, damage: 34, color: 0xb87f6a },
 };
 
 export const TITAN_ATTACK_COOLDOWN = 1.6;
 export const TITAN_STAGGER_TIME = 1.8; // 砍斷手腳後的硬直
 export const TITAN_LIMB_HP = 45; // 手腳的耐久，砍掉會硬直
 export const TITAN_WIND_TIME = 0.6; // 攻擊前的蓄力時間，雙臂後拉＋上半身前撲，是明顯的攻擊前兆
-export const TITAN_BODY_RADIUS_SCALE = 0.22; // 身體碰撞半徑＝身高 × 這個比例，撞建築物/撞彼此都用這個
+export const TITAN_BODY_RADIUS_SCALE = 0.22; // 身體視覺/攻擊判定半徑＝身高 × 這個比例
+// 跟建築物的碰撞判定刻意用比視覺身體小的半徑：泰坦沒有真的路徑規劃，
+// 街道又窄、建築物轉角又多，用完整身體半徑做碰撞會讓分軸滑動在轉角處大機率卡死。
+// 縮小碰撞半徑讓它能鑽過轉角，換來的代價是偶爾會有一點點視覺穿模，
+// 但泰坦能不能實際走到玩家面前，比碰撞邊緣完全不重疊更重要。
+export const TITAN_COLLISION_RADIUS_SCALE = 0.12;
 
 // ── 頭目泰坦（boss）───────────────────────────────────────
 // 九隻原創的頭目泰坦，全都比「大型」泰坦（25m）明顯更高、後頸耐久也拉到需要
@@ -96,39 +104,39 @@ export const TITAN_BODY_RADIUS_SCALE = 0.22; // 身體碰撞半徑＝身高 × �
 // 順序即出場順序：波次到了 BOSS_WAVE_INTERVAL 的倍數，照這個順序輪流出一隻。
 export const BOSS_TITAN_TYPES = {
   swiftShadow: {
-    label: '疾影泰坦', height: 14, napeHp: 260, speed: 15, damage: 30, color: 0xa9714f,
+    label: '疾影泰坦', height: 14, napeHp: 260, speed: 17, damage: 30, color: 0xa9714f,
     ability: 'frenzy', attackCooldownMult: 0.45, turnRate: 3.0, // 移動快、攻擊冷卻短，純粹靠速度纏鬥
   },
   nomad: {
-    label: '遊獵泰坦', height: 16, napeHp: 240, speed: 14, damage: 20, color: 0x8a8267,
+    label: '遊獵泰坦', height: 16, napeHp: 240, speed: 16, damage: 20, color: 0x8a8267,
     ability: 'evade', fleeDistance: 26, // 玩家靠太近就轉身逃跑，逼玩家用鉤索才追得上
   },
   heavyArmor: {
-    label: '重甲泰坦', height: 30, napeHp: 520, speed: 5.5, damage: 46, color: 0x9a9a9e,
+    label: '重甲泰坦', height: 30, napeHp: 520, speed: 7, damage: 46, color: 0x9a9a9e,
     ability: 'charge', chargeSpeed: 34, chargeWindup: 0.9, chargeDuration: 1.1, chargeCooldown: 5,
   },
   stonethrow: {
-    label: '投石泰坦', height: 27, napeHp: 460, speed: 6, damage: 32, color: 0x7a6248,
+    label: '投石泰坦', height: 27, napeHp: 460, speed: 8, damage: 32, color: 0x7a6248,
     ability: 'throw', throwCooldown: 3.5, throwSpeed: 46, throwDamage: 24, throwRadius: 6,
   },
   scorching: {
-    label: '灼焰泰坦', height: 48, napeHp: 700, speed: 3.2, damage: 55, color: 0xd8c8b0,
+    label: '灼焰泰坦', height: 48, napeHp: 700, speed: 4.2, damage: 55, color: 0xd8c8b0,
     ability: 'steam', steamCooldown: 6, steamRadius: 22, steamDamage: 22, steamWarning: 1.2, turnRate: 0.9,
   },
   hardshell: {
-    label: '硬殼泰坦', height: 22, napeHp: 380, speed: 9, damage: 30, color: 0xcaa788,
+    label: '硬殼泰坦', height: 22, napeHp: 380, speed: 11, damage: 30, color: 0xcaa788,
     ability: 'harden', hardenCooldown: 8, hardenDuration: 3, hardenReduction: 0.85,
   },
   spike: {
-    label: '尖刺泰坦', height: 24, napeHp: 420, speed: 6.5, damage: 34, color: 0x6f6a7a,
+    label: '尖刺泰坦', height: 24, napeHp: 420, speed: 8.5, damage: 34, color: 0x6f6a7a,
     ability: 'spike', spikeCooldown: 4.5, spikeWarning: 1.1, spikeDamage: 30, spikeRadius: 7,
   },
   rampage: {
-    label: '狂暴泰坦', height: 20, napeHp: 360, speed: 8, damage: 26, color: 0xb6503f,
+    label: '狂暴泰坦', height: 20, napeHp: 360, speed: 10, damage: 26, color: 0xb6503f,
     ability: 'enrage', enrageThreshold: 0.5, enrageSpeedMult: 1.5, enrageDamageMult: 1.4,
   },
   command: {
-    label: '號令泰坦', height: 34, napeHp: 620, speed: 7, damage: 38, color: 0xe4ded0,
+    label: '號令泰坦', height: 34, napeHp: 620, speed: 9, damage: 38, color: 0xe4ded0,
     ability: 'rally', rallyCooldown: 10, rallyHeal: 40, rallySpeedMult: 1.3, rallyDuration: 4,
   },
 };
