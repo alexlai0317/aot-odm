@@ -1,14 +1,25 @@
 import * as THREE from 'three';
 import { createWorld } from './world.js';
 import { Player } from './player.js';
-import { OdmGear } from './odm.js';
+import { HookGear } from './hookGear.js';
 import { ViewModel } from './viewmodel.js';
 import { TitanManager } from './titan.js';
 import { WaveManager } from './waves.js';
 import { Hud } from './hud.js';
-import { resolveSwing, scoreForKill, napeInReach } from './combat.js';
+import { resolveSwing, resolvePunch, scoreForKill, napeInReach } from './combat.js';
 import * as audio from './audio.js';
-import { BLADE_SWING_TIME, BLADE_HIT_WINDOW, GAS_MAX, MIN_KILL_SPEED } from './constants.js';
+import {
+  BLADE_SWING_TIME,
+  BLADE_HIT_WINDOW,
+  GAS_MAX,
+  MIN_KILL_SPEED,
+  TITAN_FORM_PUNCH_TIME,
+  TITAN_FORM_PUNCH_HIT_WINDOW,
+  TITAN_FORM_PUNCH_COOLDOWN,
+  TITAN_FORM_GAUGE_PER_NAPE_HIT,
+  TITAN_FORM_GAUGE_PER_BODY_HIT,
+  TITAN_FORM_GAUGE_PER_KILL,
+} from './constants.js';
 
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -21,7 +32,7 @@ const world = createWorld();
 world.scene.add(camera); // viewmodel 掛在 camera 底下，camera 必須進場景才會被渲染
 
 const player = new Player(camera, canvas);
-const odm = new OdmGear(world.scene, camera);
+const gear = new HookGear(world.scene, camera);
 const viewModel = new ViewModel(camera);
 const titans = new TitanManager(world.scene);
 const waves = new WaveManager(titans);
@@ -35,6 +46,8 @@ const state = {
   deathTimer: 0, // 歸零才跳結算畫面
   lastSwingTimer: 0,
   lastReloadTimer: 0,
+  lastPunchTimer: 0,
+  wasTitanForm: false,
 };
 
 // ── 畫面與輸入 ───────────────────────────────────────────
@@ -73,13 +86,15 @@ function startGame() {
   titans.clear();
   waves.reset();
   player.respawn(0, 0);
-  odm.detachAll();
+  gear.detachAll();
   viewModel.setBroken(false);
   state.score = 0;
   state.kills = 0;
   state.dying = false;
   state.deathTimer = 0;
   state.running = true;
+  state.lastPunchTimer = 0;
+  state.wasTitanForm = false;
 
   overlay.classList.add('hidden');
   pausePanel.classList.add('hidden');
@@ -93,18 +108,18 @@ function startGame() {
 function updateHookInput() {
   for (let i = 0; i < 2; i++) {
     const wants = player.hookInput[i];
-    const hook = odm.hooks[i];
+    const hook = gear.hooks[i];
 
     if (wants && hook.state === 'idle') {
       const targets = [...world.hookables, ...titans.hookableMeshes()];
-      const hit = odm.fire(i, player.position, targets);
+      const hit = gear.fire(i, player.position, targets);
       if (hit) audio.sfx.hookFire();
       else {
         audio.sfx.hookMiss();
         player.hookInput[i] = false; // 打空就重置，避免按著不放一直重射
       }
     } else if (!wants && hook.state !== 'idle') {
-      odm.detach(i);
+      gear.detach(i);
     }
   }
 }
@@ -140,18 +155,20 @@ function handleHit(result) {
       state.score += gained;
       state.kills += 1;
       hud.setScore(state.score, state.kills);
+      player.gainTitanGauge(TITAN_FORM_GAUGE_PER_NAPE_HIT + TITAN_FORM_GAUGE_PER_KILL);
 
       titans.emitSteam(titan.napeWorldPosition().clone(), titan.height * 0.35);
       audio.sfx.kill();
       hud.toast(airborne ? '空中討伐！' : '討伐成功', '', 1100);
       hud.feed(
-        `討伐 <b>${titan.type.label}巨人</b> +${gained}${airborne ? ' <b>空中</b>' : ''}`,
+        `討伐 <b>${titan.type.label}泰坦</b> +${gained}${airborne ? ' <b>空中</b>' : ''}`,
         'kill'
       );
       break;
     }
     case 'nape':
       // 砍中弱點但沒切斷：多半是速度不夠，提示玩家再拉一次速度
+      player.gainTitanGauge(TITAN_FORM_GAUGE_PER_NAPE_HIT);
       audio.sfx.fleshHit();
       hud.toast(`弱點命中 ${Math.round(titan.napeHp)} / ${titan.napeMaxHp}`, 'warn', 900);
       break;
@@ -160,10 +177,11 @@ function handleHit(result) {
       hud.toast('速度不足，刀刃彈開了', 'bad', 1200);
       break;
     case 'body':
+      player.gainTitanGauge(TITAN_FORM_GAUGE_PER_BODY_HIT);
       audio.sfx.fleshHit();
       if (result.staggered) {
         hud.toast('手臂已斷 — 硬直中', '', 1100);
-        hud.feed(`削斷 <b>${titan.type.label}巨人</b> 的手臂`);
+        hud.feed(`削斷 <b>${titan.type.label}泰坦</b> 的手臂`);
       }
       break;
     default:
@@ -173,6 +191,39 @@ function handleHit(result) {
   if (player.bladeDurability <= 0) {
     viewModel.setBroken(true);
     hud.toast('刀刃損毀 — 按 R 更換', 'bad', 1600);
+  }
+}
+
+// ── 巨人形態揮拳結算 ──────────────────────────────────────
+function updatePunch() {
+  if (player.punchRequested) {
+    player.punchRequested = false;
+    player.tryPunch();
+  }
+
+  if (player.punchTimer > 0 && state.lastPunchTimer === 0) {
+    audio.sfx.punch();
+  }
+  state.lastPunchTimer = player.punchTimer;
+
+  if (player.punchTimer <= 0 || player.punchHitDone) return;
+  const elapsed = TITAN_FORM_PUNCH_TIME - player.punchTimer;
+  if (elapsed < TITAN_FORM_PUNCH_HIT_WINDOW[0] || elapsed > TITAN_FORM_PUNCH_HIT_WINDOW[1]) return;
+
+  const result = resolvePunch(player, titans, camera);
+  player.punchHitDone = true;
+  player.punchCooldown = TITAN_FORM_PUNCH_COOLDOWN;
+  if (result.type === 'miss') return;
+
+  if (result.type === 'kill') {
+    state.score += scoreForKill(result.titan, 40, false);
+    state.kills += 1;
+    hud.setScore(state.score, state.kills);
+    titans.emitSteam(result.titan.napeWorldPosition().clone(), result.titan.height * 0.35);
+    audio.sfx.kill();
+    hud.feed(`一拳擊殺 <b>${result.titan.type.label}泰坦</b>`, 'kill');
+  } else {
+    audio.sfx.fleshHit();
   }
 }
 
@@ -187,15 +238,31 @@ function frame() {
   const simulating = state.running && (player.locked || !player.alive);
 
   if (simulating) {
-    if (player.alive) {
+    if (player.alive && !player.titanFormActive) {
       updateHookInput();
       updateSwing();
+    } else if (player.alive) {
+      updatePunch();
     }
 
-    player.update(dt, world, odm);
-    odm.render(player.position);
-    viewModel.update(dt, player);
+    player.update(dt, world, gear);
+    if (!player.titanFormActive) {
+      gear.render(player.position);
+      viewModel.update(dt, player);
+    }
     titans.update(dt, player, onPlayerHit);
+
+    if (player.titanFormActive !== state.wasTitanForm) {
+      state.wasTitanForm = player.titanFormActive;
+      if (player.titanFormActive) {
+        gear.detachAll();
+        audio.sfx.transform();
+        hud.toast('巨人化！', '', 1400);
+      } else {
+        audio.sfx.revert();
+        hud.toast('變回人類', '', 1200);
+      }
+    }
 
     if (player.alive) {
       const { distance } = titans.nearest(player.position);
@@ -219,7 +286,7 @@ function frame() {
       if (!state.dying) {
         state.dying = true;
         state.deathTimer = 1.4;
-        odm.detachAll();
+        gear.detachAll();
         audio.sfx.roar();
       }
       state.deathTimer -= dt;
@@ -227,12 +294,13 @@ function frame() {
     }
 
     hud.update(player, { label: waves.label, remainingText: waves.remainingText });
-    const target = player.alive ? napeInReach(player, titans, camera) : null;
+    hud.setBoss(waves.activeBoss);
+    const target = player.alive && !player.titanFormActive ? napeInReach(player, titans, camera) : null;
     hud.setCrosshairState(!!target, player.speed >= MIN_KILL_SPEED);
 
-    // 瓦斯音效跟著實際噴射狀態走
-    const thrusting = player.keys.gas && player.gas > 0 && player.alive;
-    audio.setGas(thrusting, odm.anyAttached() ? 1 : 0.7);
+    // 瓦斯音效跟著實際噴射狀態走（巨人形態沒有瓦斯機制）
+    const thrusting = !player.titanFormActive && player.keys.gas && player.gas > 0 && player.alive;
+    audio.setGas(thrusting, gear.anyAttached() ? 1 : 0.7);
   } else {
     audio.setGas(false);
   }
@@ -244,9 +312,9 @@ function onPlayerHit(damage, titan) {
   if (!player.takeDamage(damage)) return;
   hud.damageFlash();
   audio.sfx.playerHurt();
-  hud.feed(`被 <b>${titan.type.label}巨人</b> 擊中 −${damage}`);
-  // 被打到會被甩開，同時鉤索脫落 —— 這是被巨人拍到最痛的地方
-  odm.detachAll();
+  hud.feed(`被 <b>${titan.type.label}泰坦</b> 擊中 −${damage}`);
+  // 被打到會被甩開，同時鉤索脫落 —— 這是被泰坦拍到最痛的地方
+  gear.detachAll();
   const away = new THREE.Vector3()
     .subVectors(player.position, titan.group.position)
     .setY(0.6)
@@ -261,12 +329,19 @@ function handleWaveEvents(dt) {
   if (event.type === 'waveStarted') {
     audio.sfx.waveStart();
     setTimeout(() => audio.sfx.roar(), 400);
-    hud.toast(`第 ${event.wave} 波 — ${event.count} 隻巨人`, 'warn', 2200);
+    if (event.boss) {
+      setTimeout(() => audio.sfx.bossAppear(), 700);
+      hud.toast(`頭目泰坦出現 — ${event.boss.type.label}`, 'bad', 3000);
+      hud.feed(`<b>${event.boss.type.label}</b> 現身`, 'kill');
+    } else {
+      hud.toast(`第 ${event.wave} 波 — ${event.count} 隻泰坦`, 'warn', 2200);
+    }
   } else if (event.type === 'waveCleared') {
     audio.sfx.waveClear();
     // 清空一波補給：瓦斯回滿、補刀刃，這是唯一的補給時機
     player.gas = GAS_MAX;
     player.spareBlades += 2;
+    if (event.boss) hud.feed(`討伐頭目泰坦 <b>${event.boss.type.label}</b> 成功`, 'kill');
     hud.toast(`第 ${event.wave} 波肅清 — 補給完成`, '', 2400);
     hud.feed('補給：瓦斯全滿、刀刃 +2 組');
   }
@@ -287,7 +362,7 @@ function endGame() {
   state.running = false;
   audio.setGas(false);
   audio.sfx.gameOver();
-  odm.detachAll();
+  gear.detachAll();
   document.exitPointerLock();
 
   document.getElementById('go-summary').innerHTML =

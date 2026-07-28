@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>調查兵團 — 立體機動訓練</title>
+  <title>TITAN — 鋼索機動狩獵</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
@@ -35,6 +35,10 @@
         <div class="gauge-label">刀刃 <span id="blade-spare">備用 ×5</span></div>
         <div class="bar"><div id="blade-bar" class="bar-fill blade"></div></div>
       </div>
+      <div class="gauge">
+        <div class="gauge-label">變身 <span id="titan-gauge-value">按 T 變身</span></div>
+        <div class="bar"><div id="titan-gauge-bar" class="bar-fill titan-gauge"></div></div>
+      </div>
     </div>
 
     <div id="hud-right">
@@ -47,8 +51,14 @@
 
     <div id="hud-top">
       <div id="wave-label">第 1 波</div>
-      <div id="wave-remaining">剩餘巨人 0</div>
+      <div id="wave-remaining">剩餘泰坦 0</div>
+      <div id="boss-bar" class="hidden">
+        <div id="boss-name">頭目泰坦</div>
+        <div class="bar boss"><div id="boss-hp-bar" class="bar-fill boss-hp"></div></div>
+      </div>
     </div>
+
+    <div id="titan-form-banner" class="hidden">巨人形態 · <span id="titan-form-timer">16</span>s</div>
 
     <div id="toast"></div>
     <div id="feed"></div>
@@ -57,8 +67,8 @@
   <!-- 開場說明 -->
   <div id="overlay" class="overlay">
     <div class="panel">
-      <h1>立體機動訓練</h1>
-      <p class="sub">進擊的巨人風格 · 單人討伐</p>
+      <h1>TITAN</h1>
+      <p class="sub">鋼索機動狩獵 · 單人討伐</p>
 
       <div class="controls">
         <div class="ctrl"><kbd>滑鼠左鍵</kbd><span>發射左鉤索（按住維持）</span></div>
@@ -68,12 +78,13 @@
         <div class="ctrl"><kbd>Shift</kbd><span>揮刀</span></div>
         <div class="ctrl"><kbd>R</kbd><span>更換刀刃</span></div>
         <div class="ctrl"><kbd>W A S D</kbd><span>移動與空中微調</span></div>
+        <div class="ctrl"><kbd>T</kbd><span>變身泰坦（量表滿了才能用）</span></div>
         <div class="ctrl"><kbd>Esc</kbd><span>暫停</span></div>
       </div>
 
       <div class="brief">
-        <p><b>怎麼殺巨人：</b>傷害完全取決於揮刀當下的<b>移動速度</b>。站著砍只會彈開，
-        要先用鉤索把速度拉到 <b>30 km/h</b> 以上，繞到巨人<b>背後</b>，切中後頸那塊紅色弱點。</p>
+        <p><b>怎麼殺泰坦：</b>傷害完全取決於揮刀當下的<b>移動速度</b>。站著砍只會彈開，
+        要先用鉤索把速度拉到 <b>30 km/h</b> 以上，繞到泰坦<b>背後</b>，切中後頸那塊紅色弱點。</p>
         <p><b>訣竅：</b>鉤索要<b>往高處瞄</b>（屋頂、塔頂），掛在腳邊的牆只會把你拖著跑。
         左右鍵交替換錨點就能一直維持速度，砍不到弱點時先削手臂可以打出硬直。</p>
         <p><b>要降落就按 Ctrl。</b>煞車會放掉捲揚機的拉力並快速減速，
@@ -81,6 +92,10 @@
         <p><b>準心會告訴你時機：</b>弱點進入攻擊範圍時準心會張開，
         <b style="color:#6de08a">綠色</b>代表速度夠、砍下去有傷害，
         <b style="color:#e0796f">紅色</b>代表太慢會被彈開。</p>
+        <p><b>變身泰坦：</b>命中泰坦會累積左下角的變身量表，滿了按 <b>T</b> 就能變身，
+        期間完全免疫傷害、左鍵改成揮拳，一拳就能重創一般泰坦，時間到自動變回人類。</p>
+        <p><b>頭目泰坦：</b>每 5 波會出現一隻頭目泰坦，體型更大、耐久更高，
+        而且各自有一招獨門攻擊——畫面上出現地面警示圈或蓄力動作時記得先閃開。</p>
       </div>
 
       <button id="start-btn">開始討伐</button>

@@ -1,9 +1,9 @@
 {
-  "name": "aot-odm",
+  "name": "titan",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "進擊的巨人風格的第一人稱立體機動裝置獵巨人遊戲（Three.js 單人）",
+  "description": "第一人稱鋼索機動狩獵泰坦遊戲（Three.js 單人）",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

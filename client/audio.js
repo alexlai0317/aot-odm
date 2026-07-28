@@ -146,4 +146,19 @@ export const sfx = {
   gameOver() {
     tone({ freq: 220, slideTo: 55, duration: 1.4, gain: 0.26, type: 'sawtooth' });
   },
+  transform() {
+    tone({ freq: 90, slideTo: 260, duration: 0.7, gain: 0.3, type: 'sawtooth' });
+    noiseBurst({ duration: 0.9, freq: 200, q: 0.5, gain: 0.24, sweep: 400 });
+  },
+  revert() {
+    tone({ freq: 220, slideTo: 80, duration: 0.5, gain: 0.22, type: 'sine' });
+  },
+  punch() {
+    noiseBurst({ duration: 0.12, freq: 300, q: 0.6, gain: 0.32, sweep: -220 });
+    tone({ freq: 70, slideTo: 35, duration: 0.22, gain: 0.28, type: 'square' });
+  },
+  bossAppear() {
+    tone({ freq: 80, slideTo: 45, duration: 1.2, gain: 0.28, type: 'sawtooth' });
+    setTimeout(() => tone({ freq: 80, slideTo: 45, duration: 1.2, gain: 0.24, type: 'sawtooth' }), 300);
+  },
 };

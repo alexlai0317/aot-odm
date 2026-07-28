@@ -1,4 +1,4 @@
-import { PLAYER_MAX_HP, GAS_MAX, BLADE_MAX_DURABILITY } from './constants.js';
+import { PLAYER_MAX_HP, GAS_MAX, BLADE_MAX_DURABILITY, TITAN_FORM_GAUGE_MAX } from './constants.js';
 
 // HUD 就是一層 DOM，跟 three.js 完全解耦：main.js 每幀把數值餵進來就好。
 
@@ -23,6 +23,14 @@ export class Hud {
     this.feedEl = $('feed');
     this.vignette = $('vignette');
     this.crosshair = $('crosshair');
+
+    this.titanGaugeBar = $('titan-gauge-bar');
+    this.titanGaugeValue = $('titan-gauge-value');
+    this.bossBar = $('boss-bar');
+    this.bossName = $('boss-name');
+    this.bossHpBar = $('boss-hp-bar');
+    this.titanFormBanner = $('titan-form-banner');
+    this.titanFormTimerEl = $('titan-form-timer');
 
     this.toastTimer = null;
     this.flashTimer = null;
@@ -57,6 +65,32 @@ export class Hud {
 
     this.waveLabel.textContent = wave.label;
     this.waveRemaining.textContent = wave.remainingText;
+
+    const gaugeReady = player.titanGauge >= TITAN_FORM_GAUGE_MAX;
+    const gaugePct = (player.titanGauge / TITAN_FORM_GAUGE_MAX) * 100;
+    this.titanGaugeBar.style.width = `${gaugePct}%`;
+    this.titanGaugeBar.classList.toggle('ready', gaugeReady && !player.titanFormActive);
+    this.titanGaugeValue.textContent = player.titanFormActive
+      ? '變身中'
+      : gaugeReady
+        ? '按 T 變身！'
+        : `${Math.floor(gaugePct)}%`;
+
+    this.titanFormBanner.classList.toggle('hidden', !player.titanFormActive);
+    if (player.titanFormActive) {
+      this.titanFormTimerEl.textContent = Math.max(0, player.titanFormTimer).toFixed(1);
+    }
+  }
+
+  // 頭目泰坦血條：沒有 boss 就整條隱藏
+  setBoss(boss) {
+    if (!boss || !boss.alive) {
+      this.bossBar.classList.add('hidden');
+      return;
+    }
+    this.bossBar.classList.remove('hidden');
+    this.bossName.textContent = boss.type.label;
+    this.bossHpBar.style.width = `${Math.max(0, (boss.napeHp / boss.napeMaxHp) * 100)}%`;
   }
 
   // 準心三態：一般 / 弱點在攻擊範圍內 / 在範圍內但速度不夠

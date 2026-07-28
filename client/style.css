@@ -119,6 +119,10 @@ html, body {
 
 @keyframes pulse { 50% { opacity: 0.35; } }
 
+.bar-fill.titan-gauge { background: linear-gradient(90deg, #7a2f1f, #f0a24a); }
+.bar-fill.titan-gauge.ready { animation: gaugeReady 0.8s ease-in-out infinite; }
+@keyframes gaugeReady { 50% { filter: brightness(1.5); } }
+
 #hud-right {
   position: absolute;
   right: 32px;
@@ -171,6 +175,34 @@ html, body {
   font-size: 12px;
   letter-spacing: 0.2em;
   color: var(--dim);
+}
+
+/* ── 頭目泰坦血條 ───────────────────────────────── */
+#boss-bar {
+  margin-top: 14px;
+  width: 420px;
+  max-width: 60vw;
+}
+#boss-name {
+  font-size: 14px;
+  letter-spacing: 0.25em;
+  color: #f0a24a;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+  margin-bottom: 4px;
+}
+.bar.boss { height: 12px; }
+.bar-fill.boss-hp { background: linear-gradient(90deg, #7a1f1f, #e0554a); }
+
+/* ── 巨人形態橫幅 ───────────────────────────────── */
+#titan-form-banner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -160px);
+  font-size: 18px;
+  letter-spacing: 0.3em;
+  color: #f0a24a;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9);
 }
 
 #toast {

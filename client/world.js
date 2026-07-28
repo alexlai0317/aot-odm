@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { CITY_RADIUS, WALL_HEIGHT, BLOCK_SIZE, STREET_WIDTH, ROOF_PITCH_RATIO } from './constants.js';
 
 // 城區的生成與碰撞查詢。整座城是「圓形城牆 + 棋盤街廓」，
-// 房子高矮不一是刻意的：立體機動裝置需要密集且高度落差大的錨點才有的盪。
+// 房子高矮不一是刻意的：鋼索機動裝置需要密集且高度落差大的錨點才有的盪。
 
 // 固定亂數種子，讓每次開局的城市長得一樣（玩家才記得住地形）
 function makeRandom(seed) {
@@ -197,7 +197,7 @@ function addBuilding(scene, hookables, buildings, x, z, w, d, height, rand, forc
     minZ: z - footprintD / 2,
     maxZ: z + footprintD / 2,
     // 斜屋頂沒有真的平面可以站，落地判定簡化成屋脊那條線的高度——
-    // 站在屋頂範圍內視同站在脊線上，跟原作角色常常站在屋脊上取景是同一個抽象。
+    // 站在屋頂範圍內視同站在脊線上，玩家角色會直接落在屋脊上。
     height: height + ridgeHeight,
   });
 }

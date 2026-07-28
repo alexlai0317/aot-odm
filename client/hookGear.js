@@ -11,7 +11,7 @@ import {
   ROPE_DAMP,
 } from './constants.js';
 
-// 立體機動裝置。整個遊戲的手感都在這個檔案裡。
+// 鋼索機動裝置。整個遊戲的手感都在這個檔案裡。
 //
 // 繩索的物理模型：
 //   1. 掛上去之後，繩長只會變短（捲揚機收繩），不會變長 —— 這是繩子而不是橡皮筋
@@ -19,7 +19,7 @@ import {
 //   3. 實際距離超過繩長時，用彈簧把人拉回來，同時削掉離心方向的速度
 //      → 兩者合起來就會把直線運動彎成圓弧，也就是盪
 //
-// 錨點支援掛在會動的物件上（例如巨人身上），做法是記下命中點在該物件座標系
+// 錨點支援掛在會動的物件上（例如泰坦身上），做法是記下命中點在該物件座標系
 // 底下的位置，每幀再轉回世界座標。
 
 const _v1 = new THREE.Vector3();
@@ -30,7 +30,7 @@ _raycaster.far = HOOK_RANGE;
 
 const HAND_OFFSET = 0.34; // 鉤索從腰際左右兩側射出，不是從眼睛正中央
 
-export class OdmGear {
+export class HookGear {
   constructor(scene, camera) {
     this.camera = camera;
     this.group = new THREE.Group();
@@ -78,22 +78,22 @@ export class OdmGear {
     return this.hooks.filter((h) => h.state === 'attached').length;
   }
 
-  // 從相機發射鉤索。targets 是可以被鉤中的物件陣列（建築、城牆、巨人）。
+  // 從相機發射鉤索。targets 是可以被鉤中的物件陣列（建築、城牆、泰坦）。
   // 回傳是否成功命中。
   fire(index, playerPos, targets) {
     const hook = this.hooks[index];
     this.detach(index);
 
     // 瞄準方向就是準心正中央：曾經讓左右鉤各偏 6.5 度製造雙錨點的張開感，
-    // 但巨人的身體遠比建築物窄，距離一拉開，那個偏移角度換算成的側向誤差
-    // 就足以讓鉤爪直接飛過巨人兩側完全打空。視覺上的雙錨點張力改由發射
+    // 但泰坦的身體遠比建築物窄，距離一拉開，那個偏移角度換算成的側向誤差
+    // 就足以讓鉤爪直接飛過泰坦兩側完全打空。視覺上的雙錨點張力改由發射
     // 位置的左右手偏移（handPosition）提供，瞄準本身必須跟準心完全一致。
     this.camera.getWorldDirection(_dir);
 
     _raycaster.set(this.handPosition(hook.side, playerPos, _v1), _dir);
     const hits = _raycaster.intersectObjects(targets, false);
     // 過濾掉貼身距離的命中（例如往下看時打到自己腳邊的地面），
-    // 但門檻壓低，才不會讓近戰後想立刻鉤住同一隻巨人重新拉開距離的動作失敗
+    // 但門檻壓低，才不會讓近戰後想立刻鉤住同一隻泰坦重新拉開距離的動作失敗
     const hit = hits.find((h) => h.distance > 1.2);
     if (!hit) return false;
 
@@ -141,7 +141,7 @@ export class OdmGear {
       // 錨點掛在會動的物件上時，每幀重算世界座標
       if (hook.anchorObject) {
         if (!hook.anchorObject.parent || hook.anchorObject.userData.detached) {
-          this.detach(i); // 巨人死了 / 物件被移除 → 鉤子失效
+          this.detach(i); // 泰坦死了 / 物件被移除 → 鉤子失效
           continue;
         }
         hook.anchor.copy(hook.anchorObject.localToWorld(_v1.copy(hook.localPoint)));

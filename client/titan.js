@@ -7,7 +7,7 @@ import {
   CITY_RADIUS,
 } from './constants.js';
 
-// 巨人。模型是純幾何體堆出來的（不載外部資產，開箱即跑），
+// 泰坦。模型是純幾何體堆出來的（不載外部資產，開箱即跑），
 // 重點在後頸弱點的位置要正確：只有從背後上方切下去才算數。
 
 const _v = new THREE.Vector3();
@@ -16,8 +16,10 @@ const _napeWorld = new THREE.Vector3();
 let nextId = 1;
 
 export class Titan {
-  constructor(typeKey, x, z) {
-    const type = TITAN_TYPES[typeKey];
+  // overrideType 讓 BossTitan（bossTitan.js）可以沿用整個類別，
+  // 只是改從 BOSS_TITAN_TYPES 拿資料而不是 TITAN_TYPES
+  constructor(typeKey, x, z, overrideType) {
+    const type = overrideType ?? TITAN_TYPES[typeKey];
     this.id = nextId++;
     this.typeKey = typeKey;
     this.type = type;
@@ -35,7 +37,7 @@ export class Titan {
     this.walkPhase = Math.random() * Math.PI * 2;
     this.limbHp = { la: TITAN_LIMB_HP, ra: TITAN_LIMB_HP };
     this.yaw = Math.random() * Math.PI * 2;
-    // 奇行種會亂跑，不是直線衝過來
+    // 異常型會亂跑，不是直線衝過來
     this.wander = new THREE.Vector3();
     this.wanderTimer = 0;
 
@@ -46,7 +48,7 @@ export class Titan {
   }
 
   // 比例刻意不照真人：軀幹加寬加厚、頭放大、手臂拉長到過膝，
-  // 這是「巨人」跟「放大的人」之間唯一的視覺差異，光靠等比放大看起來只會像巨大的人偶。
+  // 這是「泰坦」跟「放大的人」之間唯一的視覺差異，光靠等比放大看起來只會像巨大的人偶。
   buildBody() {
     const h = this.height;
     const skin = new THREE.MeshLambertMaterial({ color: this.type.color });
@@ -68,7 +70,7 @@ export class Titan {
     this.group.add(head);
     this.head = head;
 
-    // 血盆大口：一條橫貫下顎的深色縫，遠處也能一眼認出「這是巨人不是人」
+    // 血盆大口：一條橫貫下顎的深色縫，遠處也能一眼認出「這是泰坦不是人」
     const mouth = new THREE.Mesh(
       new THREE.BoxGeometry(h * 0.22, h * 0.025, h * 0.03),
       new THREE.MeshBasicMaterial({ color: 0x2a1a12 })
@@ -76,7 +78,7 @@ export class Titan {
     mouth.position.set(0, h * 0.845, h * 0.135 + 0.01);
     this.group.add(mouth);
 
-    // 眼睛：讓玩家在混戰中一眼看出巨人面朝哪邊（也就是弱點在反方向）
+    // 眼睛：讓玩家在混戰中一眼看出泰坦面朝哪邊（也就是弱點在反方向）
     const eyeMat = new THREE.MeshBasicMaterial({ color: 0x2a1a12 });
     for (const sx of [-1, 1]) {
       const eye = new THREE.Mesh(new THREE.BoxGeometry(h * 0.05, h * 0.035, h * 0.02), eyeMat);
@@ -94,7 +96,7 @@ export class Titan {
     this.group.add(this.nape);
     this.parts.push(this.nape);
 
-    // 手臂刻意拉到過膝的長度——不合人體比例，正是「巨人」而非「巨大的人」的關鍵
+    // 手臂刻意拉到過膝的長度——不合人體比例，正是「泰坦」而非「巨大的人」的關鍵
     const armLength = h * 0.5;
     this.arms = {};
     for (const [key, sx] of [['la', -1], ['ra', 1]]) {
@@ -157,7 +159,7 @@ export class Titan {
     return out.setFromMatrixPosition(this.nape.matrixWorld);
   }
 
-  // 玩家是不是繞到背後了：把玩家位置轉到巨人的座標系判斷
+  // 玩家是不是繞到背後了：把玩家位置轉到泰坦的座標系判斷
   isBehind(playerPos) {
     const dx = playerPos.x - this.group.position.x;
     const dz = playerPos.z - this.group.position.z;
@@ -196,7 +198,7 @@ export class Titan {
 
     // 轉身面向玩家（有轉速上限，所以繞到背後是可行的戰術）
     const desiredYaw = Math.atan2(-dx, -dz);
-    const turnRate = this.typeKey === 'abnormal' ? 3.2 : 1.5;
+    const turnRate = this.type.turnRate ?? (this.typeKey === 'abnormal' ? 3.2 : 1.5);
     this.yaw = approachAngle(this.yaw, desiredYaw, turnRate * dt);
     this.group.rotation.y = this.yaw;
 
@@ -218,7 +220,7 @@ export class Titan {
     if (playerAlive && dist < reach && canReachHeight && this.attackCooldown === 0) {
       this.state = 'wind';
       this.windTimer = 0.5;
-      this.attackCooldown = TITAN_ATTACK_COOLDOWN;
+      this.attackCooldown = TITAN_ATTACK_COOLDOWN * (this.type.attackCooldownMult ?? 1);
       return;
     }
 
@@ -230,7 +232,7 @@ export class Titan {
     }
 
     if (this.typeKey === 'abnormal') {
-      // 奇行種：在追擊方向上疊一個會變的偏移量，路徑就不再是直線
+      // 異常型：在追擊方向上疊一個會變的偏移量，路徑就不再是直線
       this.wanderTimer -= dt;
       if (this.wanderTimer <= 0) {
         this.wanderTimer = 0.8 + Math.random() * 1.2;
@@ -301,7 +303,7 @@ export class Titan {
   kill() {
     this.state = 'dead';
     this.deadTimer = 0;
-    // 鉤在這隻巨人身上的繩索要失效（odm.js 會檢查這個旗標）
+    // 鉤在這隻泰坦身上的繩索要失效（hookGear.js 會檢查這個旗標）
     this.group.traverse((o) => { o.userData.detached = true; });
     this.nape.material.color.set(0x5a1c18);
   }
@@ -315,7 +317,12 @@ export class TitanManager {
   }
 
   spawn(typeKey, x, z) {
-    const titan = new Titan(typeKey, x, z);
+    return this.addExisting(new Titan(typeKey, x, z));
+  }
+
+  // 讓呼叫端自己 new 出一個 Titan 或 BossTitan（bossTitan.js 的頭目泰坦需要額外的
+  // scene 參數，不適合塞進這個通用方法），這裡只負責掛進場景與追蹤清單
+  addExisting(titan) {
     this.scene.add(titan.group);
     this.titans.push(titan);
     return titan;
@@ -325,7 +332,7 @@ export class TitanManager {
     return this.titans.filter((t) => t.alive).length;
   }
 
-  // 鉤索可以射中的巨人身體部位（掛在巨人身上是進階但很有效的打法）
+  // 鉤索可以射中的泰坦身體部位（掛在泰坦身上是進階但很有效的打法）
   hookableMeshes() {
     const list = [];
     for (const t of this.titans) {
@@ -349,6 +356,14 @@ export class TitanManager {
           onPlayerHit(t.damage, t);
         }
       }
+      // 範圍傷害（頭目泰坦的投擲/範圍招式）：命中點跟半徑由招式自己決定，
+      // 這裡只負責統一判定玩家在不在範圍內
+      if (t.pendingAreaHit) {
+        const { damage, x, z, radius } = t.pendingAreaHit;
+        t.pendingAreaHit = null;
+        const d = Math.hypot(player.position.x - x, player.position.z - z);
+        if (d < radius) onPlayerHit(damage, t);
+      }
     }
 
     // 屍體沉到地面下就回收
@@ -357,6 +372,7 @@ export class TitanManager {
       if (t.state === 'dead' && t.deadTimer > 5) {
         this.scene.remove(t.group);
         disposeGroup(t.group);
+        t.disposeExtras?.(); // 頭目泰坦掛在 scene 底下的額外物件（投擲物、警示圈）
       } else {
         remaining.push(t);
       }
@@ -366,7 +382,7 @@ export class TitanManager {
     this.updateSteam(dt);
   }
 
-  // 巨人死亡時冒出的蒸氣
+  // 泰坦死亡時冒出的蒸氣
   emitSteam(position, scale) {
     for (let i = 0; i < 8; i++) {
       const mesh = new THREE.Mesh(
@@ -409,11 +425,12 @@ export class TitanManager {
     for (const t of this.titans) {
       this.scene.remove(t.group);
       disposeGroup(t.group);
+      t.disposeExtras?.();
     }
     this.titans = [];
   }
 
-  // 最靠近玩家的巨人與距離，給 HUD 的警示用
+  // 最靠近玩家的泰坦與距離，給 HUD 的警示用
   nearest(position) {
     let best = null;
     let bestDist = Infinity;

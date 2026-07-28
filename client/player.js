@@ -30,10 +30,16 @@ import {
   BLADE_RELOAD_TIME,
   BLADE_SWING_TIME,
   CITY_RADIUS,
+  TITAN_FORM_GAUGE_MAX,
+  TITAN_FORM_DURATION,
+  TITAN_FORM_HEIGHT,
+  TITAN_FORM_EYE_RATIO,
+  TITAN_FORM_MOVE_SPEED,
+  TITAN_FORM_PUNCH_TIME,
 } from './constants.js';
 
 // 玩家：視角、移動、瓦斯、刀刃狀態。
-// 這裡不做鉤索物理（那在 odm.js），只負責把鉤索的結果跟重力、瓦斯、碰撞疊在一起。
+// 這裡不做鉤索物理（那在 hookGear.js），只負責把鉤索的結果跟重力、瓦斯、碰撞疊在一起。
 
 const MOUSE_SENSITIVITY = 0.0022;
 const MAX_PITCH = Math.PI / 2 - 0.05;
@@ -43,7 +49,7 @@ const _right = new THREE.Vector3();
 const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
 
 const GAME_KEYS = new Set([
-  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyR', 'KeyF', 'KeyC',
+  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyR', 'KeyF', 'KeyC', 'KeyT',
   'Space', 'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight',
 ]);
 
@@ -64,7 +70,7 @@ export class Player {
     this.grounded = true;
     this.groundedTime = 0;
     this.alive = true;
-    this.invulnerable = 0; // 受傷後的短暫無敵，避免被同一隻巨人連續打死
+    this.invulnerable = 0; // 受傷後的短暫無敵，避免被同一隻泰坦連續打死
     this.timeSinceHit = Infinity; // 用來算回血的起算延遲，初始值代表「還沒受過傷」
     this.regenerating = false; // 給 HUD 顯示回血中用
     this.pendingFallDamage = 0; // 這一幀的落地衝擊傷害，由 main.js 取走並播特效
@@ -78,6 +84,15 @@ export class Player {
     this.keys = { forward: false, back: false, left: false, right: false, gas: false, brake: false };
     this.hookInput = [false, false]; // 左鍵 / 右鍵
     this.locked = false;
+
+    // 變身泰坦：限時終極技，累積滿了按 T 觸發，完全免疫傷害、不能用鋼索/瓦斯/刀刃
+    this.titanGauge = 0;
+    this.titanFormActive = false;
+    this.titanFormTimer = 0;
+    this.punchRequested = false; // 滑鼠左鍵在巨人形態下的邊緣觸發旗標
+    this.punchTimer = 0; // > 0 代表正在揮拳
+    this.punchCooldown = 0;
+    this.punchHitDone = false;
 
     this.bindEvents();
   }
@@ -97,7 +112,10 @@ export class Player {
     // 滑鼠左右鍵是左右鉤索，按住維持、放開脫鉤
     this.domElement.addEventListener('mousedown', (e) => {
       if (!this.locked) return;
-      if (e.button === 0) this.hookInput[0] = true;
+      if (e.button === 0) {
+        this.hookInput[0] = true;
+        this.punchRequested = true; // 巨人形態下左鍵改成揮拳，由 main.js 依 titanFormActive 決定用途
+      }
       if (e.button === 2) this.hookInput[1] = true;
     });
     window.addEventListener('mouseup', (e) => {
@@ -145,6 +163,9 @@ export class Player {
       case 'KeyR':
         if (pressed) this.tryReload();
         break;
+      case 'KeyT':
+        if (pressed) this.tryTransform();
+        break;
       default:
         break;
     }
@@ -174,7 +195,39 @@ export class Player {
     this.reloadTimer = BLADE_RELOAD_TIME;
   }
 
+  // 累積變身量表：揮刀命中泰坦時呼叫（main.js 依命中類型傳不同的量）。
+  // 變身中不再累積，免得又疊出一次免費的下一次變身。
+  gainTitanGauge(amount) {
+    if (this.titanFormActive) return;
+    this.titanGauge = Math.min(TITAN_FORM_GAUGE_MAX, this.titanGauge + amount);
+  }
+
+  tryTransform() {
+    if (!this.alive || this.titanFormActive || this.titanGauge < TITAN_FORM_GAUGE_MAX) return false;
+    this.titanFormActive = true;
+    this.titanFormTimer = TITAN_FORM_DURATION;
+    this.titanGauge = 0;
+    this.velocity.set(0, 0, 0);
+    this.punchTimer = 0;
+    this.punchCooldown = 0;
+    return true;
+  }
+
+  revertTitanForm() {
+    this.titanFormActive = false;
+    this.velocity.set(0, 0, 0);
+    this.grounded = false; // 交回一般物理：從巨人視線高度自然墜落回人類視線高度
+    this.groundedTime = 0;
+  }
+
+  tryPunch() {
+    if (!this.titanFormActive || this.punchTimer > 0 || this.punchCooldown > 0) return;
+    this.punchTimer = TITAN_FORM_PUNCH_TIME;
+    this.punchHitDone = false;
+  }
+
   takeDamage(amount) {
+    if (this.titanFormActive) return false; // 巨人形態完全免疫傷害
     if (!this.alive || this.invulnerable > 0) return false;
     this.hp = Math.max(0, this.hp - amount);
     this.invulnerable = 0.9;
@@ -183,8 +236,8 @@ export class Player {
     return true;
   }
 
-  // 回血：離最近的活巨人夠遠、且離上次受傷夠久才會啟動。
-  // nearestTitanDistance 由呼叫端算好傳進來（player 本身不認識巨人清單）。
+  // 回血：離最近的活泰坦夠遠、且離上次受傷夠久才會啟動。
+  // nearestTitanDistance 由呼叫端算好傳進來（player 本身不認識泰坦清單）。
   updateRegen(dt, nearestTitanDistance) {
     this.timeSinceHit += dt;
     const safe = nearestTitanDistance > HP_REGEN_SAFE_DISTANCE;
@@ -208,9 +261,12 @@ export class Player {
     this.timeSinceHit = Infinity;
     this.regenerating = false;
     this.pendingFallDamage = 0;
+    this.titanGauge = 0;
+    this.titanFormActive = false;
+    this.titanFormTimer = 0;
   }
 
-  update(dt, world, odm) {
+  update(dt, world, gear) {
     this.invulnerable = Math.max(0, this.invulnerable - dt);
     this.updateBlades(dt);
 
@@ -224,16 +280,21 @@ export class Player {
       return;
     }
 
-    const hooked = odm.anyAttached();
+    if (this.titanFormActive) {
+      this.updateTitanForm(dt, world);
+      return;
+    }
+
+    const hooked = gear.anyAttached();
 
     this.applyMovementInput(dt, hooked);
     this.velocity.y -= GRAVITY * dt;
     this.applyGas(dt, hooked);
 
-    const reeling = odm.update(dt, this.position, this.velocity, this.keys.gas, this.keys.brake);
-    if (odm.anyAttached() && !this.keys.brake) {
+    const reeling = gear.update(dt, this.position, this.velocity, this.keys.gas, this.keys.brake);
+    if (gear.anyAttached() && !this.keys.brake) {
       // 掛著鉤索時捲揚機本身也吃瓦斯（煞車時捲揚機沒在作動就不耗）
-      this.gas = Math.max(0, this.gas - GAS_HOOK_BURN * dt * odm.attachedCount());
+      this.gas = Math.max(0, this.gas - GAS_HOOK_BURN * dt * gear.attachedCount());
     }
 
     // 空氣阻力：沒有這個會越盪越快，最後失控
@@ -294,6 +355,50 @@ export class Player {
     const power = hooked ? 1 : 0.75;
     this.velocity.addScaledVector(_forward, GAS_THRUST * power * dt);
     this.gas = Math.max(0, this.gas - GAS_BURN_RATE * dt);
+  }
+
+  // 巨人形態的移動：純地面步行，沒有重力墜落手感、沒有鋼索/瓦斯，
+  // 傷害靠拳頭（固定傷害，見 combat.js 的 resolvePunch），跟移動速度無關，
+  // 所以這裡刻意不追蹤真正的速度，velocity 恆為 0。
+  updateTitanForm(dt, world) {
+    this.titanFormTimer -= dt;
+    if (this.punchTimer > 0) this.punchTimer = Math.max(0, this.punchTimer - dt);
+    if (this.punchCooldown > 0) this.punchCooldown = Math.max(0, this.punchCooldown - dt);
+    if (this.titanFormTimer <= 0) {
+      this.revertTitanForm();
+      this.applyCamera(dt);
+      return;
+    }
+
+    _forward.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    _right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+    let ix = 0;
+    let iz = 0;
+    if (this.keys.forward) { ix += _forward.x; iz += _forward.z; }
+    if (this.keys.back) { ix -= _forward.x; iz -= _forward.z; }
+    if (this.keys.right) { ix += _right.x; iz += _right.z; }
+    if (this.keys.left) { ix -= _right.x; iz -= _right.z; }
+    const len = Math.hypot(ix, iz);
+    if (len > 0) {
+      this.position.x += (ix / len) * TITAN_FORM_MOVE_SPEED * dt;
+      this.position.z += (iz / len) * TITAN_FORM_MOVE_SPEED * dt;
+    }
+
+    const eyeHeight = TITAN_FORM_HEIGHT * TITAN_FORM_EYE_RATIO;
+    const ground = world.groundHeightAt(this.position.x, this.position.z);
+    this.position.y = ground + eyeHeight;
+
+    const distFromCenter = Math.hypot(this.position.x, this.position.z);
+    const limit = CITY_RADIUS + 6;
+    if (distFromCenter > limit) {
+      const nx = this.position.x / distFromCenter;
+      const nz = this.position.z / distFromCenter;
+      this.position.x = nx * limit;
+      this.position.z = nz * limit;
+    }
+
+    this.roll = 0;
+    this.applyCamera(dt);
   }
 
   refillGas(dt) {

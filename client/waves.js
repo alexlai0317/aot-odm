@@ -1,6 +1,17 @@
-import { WAVE_BREAK_TIME, WAVE_BASE_COUNT, WAVE_GROWTH, CITY_RADIUS } from './constants.js';
+import {
+  WAVE_BREAK_TIME,
+  WAVE_BASE_COUNT,
+  WAVE_GROWTH,
+  CITY_RADIUS,
+  BOSS_ORDER,
+  BOSS_WAVE_INTERVAL,
+  BOSS_REPEAT_SCALE,
+  BOSS_ESCORT_SCALE,
+  BOSS_TITAN_TYPES,
+} from './constants.js';
+import { BossTitan } from './bossTitan.js';
 
-// 波次管理。難度是靠「數量成長 + 逐步解鎖巨人種類」堆上去的，
+// 波次管理。難度是靠「數量成長 + 逐步解鎖泰坦種類」堆上去的，
 // 不是把血量往上加 —— 血量拉高只會讓每一刀都變鈍，數量變多才會逼玩家一直移動。
 
 const UNLOCK = [
@@ -21,6 +32,7 @@ export class WaveManager {
     this.state = 'break';
     this.breakTimer = 3; // 開局先給 3 秒適應鉤索
     this.spawnedThisWave = 0;
+    this.activeBoss = null; // 目前存活的頭目泰坦，給 HUD 血條用
   }
 
   availableTypes() {
@@ -48,15 +60,24 @@ export class WaveManager {
     if (this.titans.aliveCount === 0) {
       this.state = 'break';
       this.breakTimer = WAVE_BREAK_TIME;
-      return { type: 'waveCleared', wave: this.wave };
+      const clearedBoss = this.activeBoss;
+      this.activeBoss = null;
+      return { type: 'waveCleared', wave: this.wave, boss: clearedBoss };
     }
     return null;
+  }
+
+  isBossWave(wave) {
+    return wave > 0 && wave % BOSS_WAVE_INTERVAL === 0;
   }
 
   startNextWave(playerPos) {
     this.wave += 1;
     this.state = 'active';
-    const count = this.countForWave(this.wave);
+    this.activeBoss = null;
+
+    const bossWave = this.isBossWave(this.wave);
+    const count = Math.max(1, Math.round(this.countForWave(this.wave) * (bossWave ? BOSS_ESCORT_SCALE : 1)));
     const types = this.availableTypes();
 
     for (let i = 0; i < count; i++) {
@@ -65,7 +86,25 @@ export class WaveManager {
       this.titans.spawn(typeKey, x, z);
     }
     this.spawnedThisWave = count;
-    return { type: 'waveStarted', wave: this.wave, count };
+
+    let boss = null;
+    if (bossWave) {
+      const cycle = Math.floor((this.wave / BOSS_WAVE_INTERVAL - 1) / BOSS_ORDER.length);
+      const bossKey = BOSS_ORDER[((this.wave / BOSS_WAVE_INTERVAL - 1) % BOSS_ORDER.length + BOSS_ORDER.length) % BOSS_ORDER.length];
+      const { x, z } = spawnPosition(playerPos, 0, 1);
+      boss = new BossTitan(bossKey, x, z, this.titans.scene);
+      if (cycle > 0) {
+        // 九隻輪完一輪之後重複出場，用倍率補一點強度，不然後期會變得太簡單
+        const scale = 1 + cycle * BOSS_REPEAT_SCALE;
+        boss.napeHp = Math.round(boss.napeHp * scale);
+        boss.napeMaxHp = boss.napeHp;
+        boss.damage = Math.round(boss.damage * scale);
+      }
+      this.titans.addExisting(boss);
+      this.activeBoss = boss;
+    }
+
+    return { type: 'waveStarted', wave: this.wave, count, boss };
   }
 
   get label() {
@@ -79,12 +118,15 @@ export class WaveManager {
     if (this.state === 'break') {
       return `下一波 ${Math.max(0, Math.ceil(this.breakTimer))} 秒`;
     }
-    return `剩餘巨人 ${this.titans.aliveCount}`;
+    if (this.activeBoss && this.activeBoss.alive) {
+      return `${BOSS_TITAN_TYPES[this.activeBoss.bossKey].label}討伐中`;
+    }
+    return `剩餘泰坦 ${this.titans.aliveCount}`;
   }
 }
 
 function pickType(types, wave, index) {
-  // 每一波都保證有一定比例的「一般巨人」當基底，其餘從已解鎖的種類裡抽
+  // 每一波都保證有一定比例的「一般泰坦」當基底，其餘從已解鎖的種類裡抽
   if (index % 3 === 0) return 'normal';
   const pool = types.filter((t) => t !== 'normal');
   if (pool.length === 0) return 'normal';
@@ -94,7 +136,7 @@ function pickType(types, wave, index) {
   return pool[Math.min(pool.length - 1, idx)];
 }
 
-// 巨人從玩家四周的環形外圈出現：不會直接生在臉上，也不用跑太久才碰到面
+// 泰坦從玩家四周的環形外圈出現：不會直接生在臉上，也不用跑太久才碰到面
 function spawnPosition(playerPos, index, count) {
   const angle = (index / count) * Math.PI * 2 + Math.random() * 0.6;
   const distance = 110 + Math.random() * 90;

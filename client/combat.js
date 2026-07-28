@@ -7,12 +7,14 @@ import {
   MIN_KILL_SPEED,
   BLADE_BASE_DAMAGE,
   BLADE_SPEED_DAMAGE,
+  TITAN_FORM_PUNCH_DAMAGE,
+  TITAN_FORM_PUNCH_REACH,
 } from './constants.js';
 
 // 揮刀的命中結算。
 //
 // 這是整個遊戲的核心規則：傷害完全由「揮刀當下的移動速度」決定。
-// 站著砍砍不動巨人，要先用鉤索把速度拉起來再切下去 —— 原作就是這樣打的。
+// 站著砍砍不動泰坦，要先用鉤索把速度拉起來再切下去。
 
 const _forward = new THREE.Vector3();
 const _toTarget = new THREE.Vector3();
@@ -53,7 +55,7 @@ function findNapeTarget(player, titanManager) {
     if (!titan.alive) continue;
     titan.napeWorldPosition(_nape);
     const dist = _nape.distanceTo(player.position);
-    // 弱點的判定範圍隨體型放大，不然大型巨人的後頸小到打不中
+    // 弱點的判定範圍隨體型放大，不然大型泰坦的後頸小到打不中
     const reach = BLADE_REACH + titan.height * 0.2;
     if (dist > reach) continue;
 
@@ -105,7 +107,7 @@ function findBodyTarget(player, titanManager) {
 function hitNape(player, titan, distance) {
   const speed = player.speed;
   if (speed < MIN_KILL_SPEED) {
-    // 速度不足：刀刃彈開，只有一點點磨損，也不會給巨人造成傷害
+    // 速度不足：刀刃彈開，只有一點點磨損，也不會給泰坦造成傷害
     player.bladeDurability = Math.max(0, player.bladeDurability - 6);
     return { type: 'tooSlow', titan, speed };
   }
@@ -135,4 +137,36 @@ export function scoreForKill(titan, speed, airborne) {
   const speedBonus = Math.round(speed * 6);
   const airBonus = airborne ? 150 : 0;
   return base + speedBonus + airBonus;
+}
+
+// 巨人形態的拳頭：固定傷害、任何角度都算數（不像刀刃一定要繞背），
+// 直接打在後頸耐久上——這是「巨人跟巨人正面對幹」跟「鋼索繞背偷襲」刻意做出的手感差異。
+export function resolvePunch(player, titanManager, camera) {
+  camera.getWorldDirection(_forward);
+
+  let best = null;
+  let bestDist = Infinity;
+  for (const titan of titanManager.titans) {
+    if (!titan.alive) continue;
+    const pos = titan.group.position;
+    const dx = player.position.x - pos.x;
+    const dz = player.position.z - pos.z;
+    const horizontal = Math.max(0, Math.hypot(dx, dz) - titan.height * 0.22);
+    if (horizontal > TITAN_FORM_PUNCH_REACH) continue;
+
+    const withinHeight = player.position.y > -2 && player.position.y < titan.height * 1.15;
+    if (!withinHeight) continue;
+
+    _toTarget.set(-dx, 0, -dz).normalize();
+    if (_toTarget.dot(_forward) < 0.2) continue; // 必須大致朝著目標揮拳
+
+    if (horizontal < bestDist) {
+      bestDist = horizontal;
+      best = titan;
+    }
+  }
+
+  if (!best) return { type: 'miss' };
+  const killed = best.damageNape(TITAN_FORM_PUNCH_DAMAGE);
+  return { type: killed ? 'kill' : 'punch', titan: best, damage: TITAN_FORM_PUNCH_DAMAGE };
 }
